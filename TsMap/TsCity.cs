@@ -10,7 +10,6 @@ namespace TsMap
         private TsMapper _mapper;
 
         public string Name { get; set; }
-        [JsonIgnore]
         public string LocalizationToken { get; set; }
         public string Country { get; set; }
         [JsonIgnore]

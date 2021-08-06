@@ -46,6 +46,7 @@
             this.statusStrip1 = new System.Windows.Forms.StatusStrip();
             this.toolStripStatusLabel = new System.Windows.Forms.ToolStripStatusLabel();
             this.toolStripProgressBar = new System.Windows.Forms.ToolStripProgressBar();
+            this.exportInfoToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.MainMenuStrip.SuspendLayout();
             this.MapPanel.SuspendLayout();
             this.statusStrip1.SuspendLayout();
@@ -66,6 +67,7 @@
             // 
             this.mainToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.GenerateTileMapToolStripMenuItem,
+            this.exportInfoToolStripMenuItem,
             this.exitToolStripMenuItem});
             this.mainToolStripMenuItem.Name = "mainToolStripMenuItem";
             this.mainToolStripMenuItem.Size = new System.Drawing.Size(46, 20);
@@ -74,14 +76,14 @@
             // GenerateTileMapToolStripMenuItem
             // 
             this.GenerateTileMapToolStripMenuItem.Name = "GenerateTileMapToolStripMenuItem";
-            this.GenerateTileMapToolStripMenuItem.Size = new System.Drawing.Size(169, 22);
+            this.GenerateTileMapToolStripMenuItem.Size = new System.Drawing.Size(180, 22);
             this.GenerateTileMapToolStripMenuItem.Text = "Generate Tile Map";
             this.GenerateTileMapToolStripMenuItem.Click += new System.EventHandler(this.GenerateTileMapToolStripMenuItem_Click);
             // 
             // exitToolStripMenuItem
             // 
             this.exitToolStripMenuItem.Name = "exitToolStripMenuItem";
-            this.exitToolStripMenuItem.Size = new System.Drawing.Size(169, 22);
+            this.exitToolStripMenuItem.Size = new System.Drawing.Size(180, 22);
             this.exitToolStripMenuItem.Text = "Exit";
             this.exitToolStripMenuItem.Click += new System.EventHandler(this.ExitToolStripMenuItem_Click);
             // 
@@ -191,6 +193,13 @@
             this.toolStripProgressBar.Style = System.Windows.Forms.ProgressBarStyle.Marquee;
             this.toolStripProgressBar.Visible = false;
             // 
+            // exportInfoToolStripMenuItem
+            // 
+            this.exportInfoToolStripMenuItem.Name = "exportInfoToolStripMenuItem";
+            this.exportInfoToolStripMenuItem.Size = new System.Drawing.Size(180, 22);
+            this.exportInfoToolStripMenuItem.Text = "Export Info";
+            this.exportInfoToolStripMenuItem.Click += new System.EventHandler(this.exportInfoToolStripMenuItem_Click);
+            // 
             // TsMapCanvas
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
@@ -231,5 +240,6 @@
         private System.Windows.Forms.StatusStrip statusStrip1;
         private System.Windows.Forms.ToolStripStatusLabel toolStripStatusLabel;
         private System.Windows.Forms.ToolStripProgressBar toolStripProgressBar;
+        private System.Windows.Forms.ToolStripMenuItem exportInfoToolStripMenuItem;
     }
 }

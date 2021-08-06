@@ -311,5 +311,19 @@ namespace TsMap.Canvas
                 toolStripProgressBar.Visible = showProgressBar;
             }));
         }
+
+        private void exportInfoToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            _tilesGeneratorMapper = this.CreateMapper();
+
+            _tilesGeneratorMapper.Parse();
+
+            _tilesGeneratorMapper.ExportBusStops(SettingsManager.Current.Settings.TileGenerator.ExportFlags, SettingsManager.Current.Settings.TileGenerator.LastTileMapPath);
+            _tilesGeneratorMapper.ExportCities(SettingsManager.Current.Settings.TileGenerator.ExportFlags, SettingsManager.Current.Settings.TileGenerator.LastTileMapPath);
+            _tilesGeneratorMapper.ExportCountries(SettingsManager.Current.Settings.TileGenerator.ExportFlags, SettingsManager.Current.Settings.TileGenerator.LastTileMapPath);
+            _tilesGeneratorMapper.ExportOverlays(SettingsManager.Current.Settings.TileGenerator.ExportFlags, SettingsManager.Current.Settings.TileGenerator.LastTileMapPath);
+
+            MessageBox.Show("Info exported");
+        }
     }
 }

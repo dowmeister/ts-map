@@ -5,6 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Web.Script.Serialization;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using TsMap.HashFiles;
@@ -39,6 +40,7 @@ namespace TsMap
         public readonly List<TsFerryItem> FerryConnections = new List<TsFerryItem>();
         public readonly List<TsCompanyItem> Companies = new List<TsCompanyItem>();
         public readonly List<TsTriggerItem> Triggers = new List<TsTriggerItem>();
+        public readonly List<TsBusStopItem> BusStops = new List<TsBusStopItem>();
 
         public readonly Dictionary<ulong, TsNode> Nodes = new Dictionary<ulong, TsNode>();
 
@@ -309,7 +311,7 @@ namespace TsMap
                         }
                     }
 
-                    if (!line.Contains("}") || conn == null) continue;;
+                    if (!line.Contains("}") || conn == null) continue; ;
 
                     var existingItem = _ferryConnectionLookup.FirstOrDefault(item =>
                         (item.StartPortToken == conn.StartPortToken && item.EndPortToken == conn.EndPortToken) ||
@@ -589,6 +591,31 @@ namespace TsMap
             }
             File.WriteAllText(Path.Combine(path, "Cities.json"), citiesJArr.ToString(Formatting.Indented));
         }
+
+        public void ExportBusStops(ExportFlags exportFlags, string path)
+        {
+            if (!Directory.Exists(path)) return;
+
+            List<dynamic> busStops = new List<dynamic>();
+
+            foreach (var bs in BusStops)
+            {
+                var City = this.GetCity(bs);
+
+                var x = new
+                {
+                    X = bs.X,
+                    Y = bs.Z,
+                    Type = "BusStop",
+                    City = CityForExport(bs)
+                };
+
+                busStops.Add(x);
+            }
+
+            string json = new JavaScriptSerializer().Serialize(busStops);
+            File.WriteAllText(Path.Combine(path, "BusStop.json"), json);
+        }
         /// <summary>
         /// Creates a json file with the positions and names (w/ localizations) of all countries
         /// </summary>
@@ -649,6 +676,7 @@ namespace TsMap
                     ["Type"] = "Overlay",
                     ["Width"] = b.Width,
                     ["Height"] = b.Height,
+                    ["City"] = CityForExportJObject(overlay)
                 };
                 overlaysJArr.Add(overlayJObj);
                 if (saveAsPNG && !File.Exists(Path.Combine(overlayPath, $"{overlayName}.png")))
@@ -692,6 +720,7 @@ namespace TsMap
                     ["Type"] = "Company",
                     ["Width"] = b.Width,
                     ["Height"] = b.Height,
+                    ["City"] = CityForExportJObject(company)
                 };
                 overlaysJArr.Add(overlayJObj);
                 if (saveAsPNG && !File.Exists(Path.Combine(overlayPath, $"{overlayName}.png")))
@@ -711,6 +740,7 @@ namespace TsMap
                     ["Type"] = "Parking",
                     ["Width"] = b.Width,
                     ["Height"] = b.Height,
+                    ["City"] = CityForExportJObject(trigger)
                 };
                 overlaysJArr.Add(overlayJObj);
                 if (saveAsPNG && !File.Exists(Path.Combine(overlayPath, $"{overlayName}.png")))
@@ -730,6 +760,7 @@ namespace TsMap
                     ["Type"] = (ferry.Train) ? "Train" : "Ferry",
                     ["Width"] = b.Width,
                     ["Height"] = b.Height,
+                    ["City"] = CityForExportJObject(ferry)
                 };
                 overlaysJArr.Add(overlayJObj);
                 if (saveAsPNG && !File.Exists(Path.Combine(overlayPath, $"{overlayName}.png")))
@@ -743,7 +774,7 @@ namespace TsMap
                 if (prefab.Prefab.PrefabNodes == null) continue;
                 var mapPointOrigin = prefab.Prefab.PrefabNodes[prefab.Origin];
 
-                var rot = (float) (originNode.Rotation - Math.PI -
+                var rot = (float)(originNode.Rotation - Math.PI -
                                    Math.Atan2(mapPointOrigin.RotZ, mapPointOrigin.RotX) + Math.PI / 2);
 
                 var prefabStartX = originNode.X - mapPointOrigin.X;
@@ -799,6 +830,12 @@ namespace TsMap
                                 overlayJObj["Type"] = "Recruitment";
                                 break;
                             }
+                        case TsSpawnPointType.Hotel:
+                            {
+                                overlayName = "hotel_ico";
+                                overlayJObj["Type"] = "Hotel";
+                                break;
+                            }
                         default:
                             continue;
                     }
@@ -809,6 +846,7 @@ namespace TsMap
                     if (b == null) continue;
                     overlayJObj["Width"] = b.Width;
                     overlayJObj["Height"] = b.Height;
+                    overlayJObj["City"] = CityForExportJObject(prefab);
                     overlaysJArr.Add(overlayJObj);
                     if (saveAsPNG && !File.Exists(Path.Combine(overlayPath, $"{overlayName}.png")))
                         b.Save(Path.Combine(overlayPath, $"{overlayName}.png"));
@@ -829,6 +867,7 @@ namespace TsMap
                         ["Y"] = newPoint.Y,
                         ["Name"] = "parking_ico",
                         ["Type"] = "Parking",
+                        ["City"] = CityForExportJObject(prefab)
                     };
 
                     if (triggerPoint.TriggerActionToken != ScsHash.StringToToken("hud_parking")) continue;
@@ -839,6 +878,7 @@ namespace TsMap
                     if (b == null) continue;
                     overlayJObj["Width"] = b.Width;
                     overlayJObj["Height"] = b.Height;
+                    overlayJObj["City"] = CityForExportJObject(prefab);
                     overlaysJArr.Add(overlayJObj);
                     if (saveAsPNG && !File.Exists(Path.Combine(overlayPath, $"{overlayName}.png")))
                         b.Save(Path.Combine(overlayPath, $"{overlayName}.png"));
@@ -846,6 +886,40 @@ namespace TsMap
             }
             File.WriteAllText(Path.Combine(path, "Overlays.json"), overlaysJArr.ToString(Formatting.Indented));
         }
+
+        private dynamic CityForExport(TsItem.TsItem item)
+        {
+            TsCity city = GetCity(item);
+
+            if (city == null)
+                return null;
+
+            var o = new
+            {
+                Name = city.LocalizedNames.Count > 0 ? city.LocalizedNames["en_us"] : city.Name,
+                InGameID = ScsHash.TokenToString(city.Token),
+                Country = city.Country
+            };
+
+            return o;
+        }
+
+        private dynamic CityForExportJObject(TsItem.TsItem item)
+        {
+            TsCity city = GetCity(item);
+
+            if (city == null)
+                return null;
+
+            var o = new JObject
+            {
+                ["Name"] = city.LocalizedNames.Count > 0 ? city.LocalizedNames["en_us"] : city.Name,
+                ["InGameID"] = ScsHash.TokenToString(city.Token),
+                ["Country"] = city.Country
+            };
+
+            return o;
+        }       
 
         public void UpdateEdgeCoords(TsNode node)
         {
@@ -906,6 +980,18 @@ namespace TsMap
             {
                 connection.SetPortLocation(ferryPortId, x, z);
             }
+        }
+
+        public TsCity GetCity(TsItem.TsItem item)
+        {
+            foreach (var city in Cities)
+            {
+                if (item.X >= city.X &&
+                    item.X <= (city.X + city.Width) &&
+                    item.Z >= city.Z &&
+                    item.Z <= (city.Z + city.Height)) return city.City;
+            }
+            return null;
         }
     }
 }
