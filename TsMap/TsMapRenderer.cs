@@ -451,6 +451,21 @@ namespace TsMap
                                 b = overlay?.GetBitmap();
                                 break;
                             }
+                            case TsSpawnPointType.CompanyUnloadPos:
+                                Console.WriteLine("x");
+                                break;
+                            case TsSpawnPointType.UnloadEasyPos:
+                                Console.WriteLine("x");
+                                break;
+                            case TsSpawnPointType.UnloadHardPos:
+                               Console.WriteLine("x");
+                                break;
+                            case TsSpawnPointType.UnloadMediumPos:
+                                Console.WriteLine("x");
+                                break;
+                            case TsSpawnPointType.UnloadRigidPos:
+                                Console.WriteLine("x");
+                                break;
                         }
                         if (b != null)
                             g.DrawImage(b, newPoint.X - b.Width / 2f, newPoint.Y - b.Height / 2f, b.Width, b.Height);
@@ -462,6 +477,8 @@ namespace TsMap
                     {
                         var newPoint = RenderHelper.RotatePoint(prefabstartX + triggerPoint.X, prefabStartZ + triggerPoint.Z, rot,
                             originNode.X, originNode.Z);
+
+                        Console.WriteLine(ScsHash.TokenToString(triggerPoint.TriggerActionToken));
 
                         if (triggerPoint.TriggerId == lastId) continue;
                         lastId = (int) triggerPoint.TriggerId;

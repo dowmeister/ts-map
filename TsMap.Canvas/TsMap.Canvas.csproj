@@ -33,6 +33,9 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="CommandLine, Version=2.9.0.0, Culture=neutral, PublicKeyToken=5a870481e358d379, processorArchitecture=MSIL">
+      <HintPath>..\packages\CommandLineParser.2.9.0-preview1\lib\net461\CommandLine.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Drawing" />
@@ -46,6 +49,12 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="SetupFormAdvanced.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="SetupFormAdvanced.Designer.cs">
+      <DependentUpon>SetupFormAdvanced.cs</DependentUpon>
+    </Compile>
     <Compile Include="TileMapGeneratorForm.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -91,6 +100,9 @@
     <Compile Include="TsMapCanvas.Designer.cs">
       <DependentUpon>TsMapCanvas.cs</DependentUpon>
     </Compile>
+    <EmbeddedResource Include="SetupFormAdvanced.resx">
+      <DependentUpon>SetupFormAdvanced.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="TileMapGeneratorForm.resx">
       <DependentUpon>TileMapGeneratorForm.cs</DependentUpon>
     </EmbeddedResource>
@@ -119,6 +131,7 @@
     <EmbeddedResource Include="TsMapCanvas.resx">
       <DependentUpon>TsMapCanvas.cs</DependentUpon>
     </EmbeddedResource>
+    <None Include="packages.config" />
     <None Include="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>

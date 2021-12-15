@@ -1,4 +1,5 @@
-﻿using System;
+﻿using CommandLine;
+using System;
 using System.Windows.Forms;
 
 namespace TsMap.Canvas
@@ -9,11 +10,20 @@ namespace TsMap.Canvas
         /// The main entry point for the application.
         /// </summary>
         [STAThread]
-        private static void Main()
+        private static void Main(string[] args)
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new SetupForm());
+
+            Parser.Default.ParseArguments<RunOptions>(args)
+                   .WithParsed<RunOptions>(o =>
+                   {
+                       RunOptionsContext.Current.Options = o;
+
+                       Application.Run(new SetupFormAdvanced());
+                   });
+
+
         }
     }
 }

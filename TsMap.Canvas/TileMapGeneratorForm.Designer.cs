@@ -29,16 +29,16 @@
         private void InitializeComponent()
         {
             this.components = new System.ComponentModel.Container();
-            System.Windows.Forms.TreeNode treeNode1 = new System.Windows.Forms.TreeNode("Generate TileMap Info");
-            System.Windows.Forms.TreeNode treeNode2 = new System.Windows.Forms.TreeNode("Localized Names");
-            System.Windows.Forms.TreeNode treeNode3 = new System.Windows.Forms.TreeNode("Generate City List", new System.Windows.Forms.TreeNode[] {
-            treeNode2});
-            System.Windows.Forms.TreeNode treeNode4 = new System.Windows.Forms.TreeNode("Localized Names");
-            System.Windows.Forms.TreeNode treeNode5 = new System.Windows.Forms.TreeNode("Generate Country List", new System.Windows.Forms.TreeNode[] {
-            treeNode4});
-            System.Windows.Forms.TreeNode treeNode6 = new System.Windows.Forms.TreeNode("Export As PNG");
-            System.Windows.Forms.TreeNode treeNode7 = new System.Windows.Forms.TreeNode("Generate Overlay List", new System.Windows.Forms.TreeNode[] {
-            treeNode6});
+            System.Windows.Forms.TreeNode treeNode8 = new System.Windows.Forms.TreeNode("Generate TileMap Info");
+            System.Windows.Forms.TreeNode treeNode9 = new System.Windows.Forms.TreeNode("Localized Names");
+            System.Windows.Forms.TreeNode treeNode10 = new System.Windows.Forms.TreeNode("Generate City List", new System.Windows.Forms.TreeNode[] {
+            treeNode9});
+            System.Windows.Forms.TreeNode treeNode11 = new System.Windows.Forms.TreeNode("Localized Names");
+            System.Windows.Forms.TreeNode treeNode12 = new System.Windows.Forms.TreeNode("Generate Country List", new System.Windows.Forms.TreeNode[] {
+            treeNode11});
+            System.Windows.Forms.TreeNode treeNode13 = new System.Windows.Forms.TreeNode("Export As PNG");
+            System.Windows.Forms.TreeNode treeNode14 = new System.Windows.Forms.TreeNode("Generate Overlay List", new System.Windows.Forms.TreeNode[] {
+            treeNode13});
             this.GenerateBtn = new System.Windows.Forms.Button();
             this.StartLabel = new System.Windows.Forms.Label();
             this.EndLabel = new System.Windows.Forms.Label();
@@ -59,6 +59,7 @@
             this.lblMapPadding = new System.Windows.Forms.Label();
             this.txtMapPadding = new System.Windows.Forms.TextBox();
             this.triStateTreeView1 = new TsMap.Canvas.TriStateTreeView();
+            this.SaveSettingsButton = new System.Windows.Forms.Button();
             ((System.ComponentModel.ISupportInitialize)(this.StartZoomLevelBox)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.EndZoomLevelBox)).BeginInit();
             this.groupBox1.SuspendLayout();
@@ -66,7 +67,7 @@
             // 
             // GenerateBtn
             // 
-            this.GenerateBtn.Location = new System.Drawing.Point(10, 211);
+            this.GenerateBtn.Location = new System.Drawing.Point(9, 240);
             this.GenerateBtn.Name = "GenerateBtn";
             this.GenerateBtn.Size = new System.Drawing.Size(298, 23);
             this.GenerateBtn.TabIndex = 2;
@@ -257,41 +258,52 @@
             // 
             this.triStateTreeView1.Location = new System.Drawing.Point(10, 59);
             this.triStateTreeView1.Name = "triStateTreeView1";
-            treeNode1.Checked = true;
-            treeNode1.Name = "GenTileMapInfo";
-            treeNode1.StateImageIndex = 1;
-            treeNode1.Text = "Generate TileMap Info";
-            treeNode2.Name = "GenCityLocalizedNames";
-            treeNode2.StateImageIndex = 0;
-            treeNode2.Text = "Localized Names";
-            treeNode3.Name = "GenCityList";
-            treeNode3.StateImageIndex = 0;
-            treeNode3.Text = "Generate City List";
-            treeNode4.Name = "GenCountryLocalizedNames";
-            treeNode4.StateImageIndex = 0;
-            treeNode4.Text = "Localized Names";
-            treeNode5.Name = "GenCountryList";
-            treeNode5.StateImageIndex = 0;
-            treeNode5.Text = "Generate Country List";
-            treeNode6.Name = "GenOverlayPNGs";
-            treeNode6.StateImageIndex = 0;
-            treeNode6.Text = "Export As PNG";
-            treeNode7.Name = "GenOverlayList";
-            treeNode7.StateImageIndex = 0;
-            treeNode7.Text = "Generate Overlay List";
+            treeNode8.Checked = true;
+            treeNode8.Name = "GenTileMapInfo";
+            treeNode8.StateImageIndex = 1;
+            treeNode8.Text = "Generate TileMap Info";
+            treeNode9.Name = "GenCityLocalizedNames";
+            treeNode9.StateImageIndex = 0;
+            treeNode9.Text = "Localized Names";
+            treeNode10.Name = "GenCityList";
+            treeNode10.StateImageIndex = 0;
+            treeNode10.Text = "Generate City List";
+            treeNode11.Name = "GenCountryLocalizedNames";
+            treeNode11.StateImageIndex = 0;
+            treeNode11.Text = "Localized Names";
+            treeNode12.Name = "GenCountryList";
+            treeNode12.StateImageIndex = 0;
+            treeNode12.Text = "Generate Country List";
+            treeNode13.Name = "GenOverlayPNGs";
+            treeNode13.StateImageIndex = 0;
+            treeNode13.Text = "Export As PNG";
+            treeNode14.Name = "GenOverlayList";
+            treeNode14.StateImageIndex = 0;
+            treeNode14.Text = "Generate Overlay List";
             this.triStateTreeView1.Nodes.AddRange(new System.Windows.Forms.TreeNode[] {
-            treeNode1,
-            treeNode3,
-            treeNode5,
-            treeNode7});
+            treeNode8,
+            treeNode10,
+            treeNode12,
+            treeNode14});
             this.triStateTreeView1.Size = new System.Drawing.Size(166, 120);
             this.triStateTreeView1.TabIndex = 13;
+            // 
+            // SaveSettingsButton
+            // 
+            this.SaveSettingsButton.Location = new System.Drawing.Point(8, 211);
+            this.SaveSettingsButton.Name = "SaveSettingsButton";
+            this.SaveSettingsButton.Size = new System.Drawing.Size(298, 23);
+            this.SaveSettingsButton.TabIndex = 18;
+            this.SaveSettingsButton.Text = "Save Settings";
+            this.SaveSettingsButton.UseVisualStyleBackColor = true;
+            this.SaveSettingsButton.Click += new System.EventHandler(this.SaveSettings_Click);
             // 
             // TileMapGeneratorForm
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(319, 243);
+            this.ClientSize = new System.Drawing.Size(319, 271);
+            this.Controls.Add(this.SaveSettingsButton);
             this.Controls.Add(this.txtMapPadding);
             this.Controls.Add(this.lblMapPadding);
             this.Controls.Add(this.label1);
@@ -340,5 +352,6 @@
         private System.Windows.Forms.Label label1;
         private System.Windows.Forms.Label lblMapPadding;
         private System.Windows.Forms.TextBox txtMapPadding;
+        private System.Windows.Forms.Button SaveSettingsButton;
     }
 }

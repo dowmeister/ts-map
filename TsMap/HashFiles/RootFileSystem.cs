@@ -260,13 +260,16 @@ namespace TsMap.HashFiles
         private const uint ScsMagic = 592659283;
 
         private string _path;
+        private string _sourceDirFileFilter;
+
         public Dictionary<string, ScsRootFile> Files { get; }
 
         private ScsDirectory _rootDirectory;
 
-        public RootFileSystem(string path)
+        public RootFileSystem(string path, string sourceDirFileFilter)
         {
             _path = path;
+            _sourceDirFileFilter = sourceDirFileFilter;
 
             Files = new Dictionary<string, ScsRootFile>();
 
@@ -286,7 +289,7 @@ namespace TsMap.HashFiles
 
         public void AddSourceDirectory(string path)
         {
-            var scsFiles = Directory.GetFiles(path, "*.scs");
+            var scsFiles = Directory.GetFiles(path, _sourceDirFileFilter);
 
             foreach (var scsFile in scsFiles)
             {

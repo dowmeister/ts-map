@@ -46,5 +46,17 @@ namespace TsMap
             serializer.MaxJsonLength = Int32.MaxValue;
             File.WriteAllText(Path.Combine(_settingsPath, "RoadPoints.json"), serializer.Serialize(points));
         }
+
+        public static List<TsMapSet> LoadMapSets()
+        {
+            if (!File.Exists(Path.Combine(_settingsPath, "MapSets.json"))) return new List<TsMapSet>();
+            return JsonConvert.DeserializeObject<List<TsMapSet>>(File.ReadAllText(Path.Combine(_settingsPath, "MapSets.json")));
+        }
+
+        public static void SaveMapSets(List<TsMapSet> mapSets)
+        {
+            Directory.CreateDirectory(_settingsPath);
+            File.WriteAllText(Path.Combine(_settingsPath, "MapSets.json"), JsonConvert.SerializeObject(mapSets, Formatting.Indented));
+        }
     }
 }

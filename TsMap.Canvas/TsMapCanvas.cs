@@ -37,7 +37,7 @@ namespace TsMap.Canvas
 
         float movement = 0;
 
-        public TsMapCanvas(SetupForm f)
+        public TsMapCanvas()
         {
             InitializeComponent();
 
@@ -85,15 +85,23 @@ namespace TsMap.Canvas
 
             Closed += (s, e) =>
             {
-                f.Close();
                 _tileMapGeneratorForm?.Close();
             };
 
+            if (RunOptionsContext.Current.Options.GenerateTiles)
+            {
+                this.LaunchTilesGeneration();
+            }
+
+            if (RunOptionsContext.Current.Options.ExportInfo)
+            {
+                this.LaunchExportInfo();
+            }
         }
 
         private TsMapper CreateMapper()
         {
-            return new TsMapper(SettingsManager.Current.Settings.LastGamePath, SettingsManager.Current.Settings.Mods);
+            return new TsMapper(MapSetContext.Current.MapSet.Path, MapSetContext.Current.MapSet.Mods, MapSetContext.Current.MapSet.FilesFilter);
         }
 
         private TsMapRenderer CreateRenderer(TsMapper mapper)
@@ -244,42 +252,47 @@ namespace TsMap.Canvas
 
             _tileMapGeneratorForm.GenerateTileMap += () => // Called when export button is pressed in TileMapGeneratorForm
             {
-                _tileMapGeneratorForm.Close();
-
-                MapPanel.Enabled = false;
-
-                //Task.Run(() =>
-                //{
-                    UpdateProgress("Loading map...", true);
-
-                    _tilesGeneratorMapper = this.CreateMapper();
-
-                    _tilesGeneratorMapper.Parse();
-
-                    UpdateProgress("Loading renderer...", true);
-
-                    _tilesGeneratorRenderer = this.CreateRenderer(_tilesGeneratorMapper);
-
-                    UpdateProgress("Generating tiles...", true);
-
-                    _tilesGeneratorMapper.ExportInfo(SettingsManager.Current.Settings.TileGenerator.ExportFlags, SettingsManager.Current.Settings.TileGenerator.LastTileMapPath);
-
-                    GenerateTileMap(SettingsManager.Current.Settings.TileGenerator.StartZoomLevel,
-                        SettingsManager.Current.Settings.TileGenerator.EndZoomLevel, SettingsManager.Current.Settings.TileGenerator.LastTileMapPath,
-                        SettingsManager.Current.Settings.TileGenerator.GenerateTiles,
-                        (SettingsManager.Current.Settings.TileGenerator.ExportFlags & ExportFlags.TileMapInfo) == ExportFlags.TileMapInfo, SettingsManager.Current.Settings.TileGenerator.RenderFlags);
-
-                    MessageBox.Show("Tile map has been generated!", "TsMap - Tile Map Generation Finished", MessageBoxButtons.OK, MessageBoxIcon.Information);
-
-                    UpdateProgress("Ready.", false);
-
-                    Invoke(new Action(() =>
-                    {
-                        Focus();
-                        MapPanel.Enabled = true;
-                    }));       
+                this.LaunchTilesGeneration();
                //});
             };
+        }
+
+        private void LaunchTilesGeneration()
+        {
+            _tileMapGeneratorForm.Close();
+
+            MapPanel.Enabled = false;
+
+            //Task.Run(() =>
+            //{
+            UpdateProgress("Loading map...", true);
+
+            _tilesGeneratorMapper = this.CreateMapper();
+
+            _tilesGeneratorMapper.Parse();
+
+            UpdateProgress("Loading renderer...", true);
+
+            _tilesGeneratorRenderer = this.CreateRenderer(_tilesGeneratorMapper);
+
+            UpdateProgress("Generating tiles...", true);
+
+            _tilesGeneratorMapper.ExportInfo(SettingsManager.Current.Settings.TileGenerator.ExportFlags, MapSetContext.Current.MapSet.OutputPath);
+
+            GenerateTileMap(SettingsManager.Current.Settings.TileGenerator.StartZoomLevel,
+                SettingsManager.Current.Settings.TileGenerator.EndZoomLevel, MapSetContext.Current.MapSet.OutputPath,
+                SettingsManager.Current.Settings.TileGenerator.GenerateTiles,
+                (SettingsManager.Current.Settings.TileGenerator.ExportFlags & ExportFlags.TileMapInfo) == ExportFlags.TileMapInfo, SettingsManager.Current.Settings.TileGenerator.RenderFlags);
+
+            MessageBox.Show("Tile map has been generated!", "TsMap - Tile Map Generation Finished", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+            UpdateProgress("Ready.", false);
+
+            Invoke(new Action(() =>
+            {
+                Focus();
+                MapPanel.Enabled = true;
+            }));
         }
 
         private void FullMapToolStripMenuItem_Click(object sender, EventArgs e)
@@ -314,14 +327,19 @@ namespace TsMap.Canvas
 
         private void exportInfoToolStripMenuItem_Click(object sender, EventArgs e)
         {
+            this.LaunchExportInfo();
+        }
+
+        private void LaunchExportInfo()
+        {
             _tilesGeneratorMapper = this.CreateMapper();
 
             _tilesGeneratorMapper.Parse();
 
-            _tilesGeneratorMapper.ExportBusStops(SettingsManager.Current.Settings.TileGenerator.ExportFlags, SettingsManager.Current.Settings.TileGenerator.LastTileMapPath);
-            _tilesGeneratorMapper.ExportCities(SettingsManager.Current.Settings.TileGenerator.ExportFlags, SettingsManager.Current.Settings.TileGenerator.LastTileMapPath);
-            _tilesGeneratorMapper.ExportCountries(SettingsManager.Current.Settings.TileGenerator.ExportFlags, SettingsManager.Current.Settings.TileGenerator.LastTileMapPath);
-            _tilesGeneratorMapper.ExportOverlays(SettingsManager.Current.Settings.TileGenerator.ExportFlags, SettingsManager.Current.Settings.TileGenerator.LastTileMapPath);
+            _tilesGeneratorMapper.ExportBusStops(SettingsManager.Current.Settings.TileGenerator.ExportFlags, MapSetContext.Current.MapSet.OutputPath);
+            _tilesGeneratorMapper.ExportCities(SettingsManager.Current.Settings.TileGenerator.ExportFlags, MapSetContext.Current.MapSet.OutputPath);
+            _tilesGeneratorMapper.ExportCountries(SettingsManager.Current.Settings.TileGenerator.ExportFlags, MapSetContext.Current.MapSet.OutputPath);
+            _tilesGeneratorMapper.ExportOverlays(SettingsManager.Current.Settings.TileGenerator.ExportFlags, MapSetContext.Current.MapSet.OutputPath);
 
             MessageBox.Show("Info exported");
         }

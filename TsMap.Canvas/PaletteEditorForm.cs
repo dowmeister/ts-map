@@ -26,7 +26,7 @@ namespace TsMap.Canvas
         {
             SettingsManager.Current.Settings.Palette.Background = txtBackground.Text;
             SettingsManager.Current.Settings.Palette.CityName = txtCityNames.Text;
-            SettingsManager.Current.Settings.Palette.Error = txtBackground.Text;
+            SettingsManager.Current.Settings.Palette.Error = txtError.Text;
             SettingsManager.Current.Settings.Palette.FerryLines = txtFerryLines.Text;
             SettingsManager.Current.Settings.Palette.PrefabDark = txtPrefabDark.Text;
             SettingsManager.Current.Settings.Palette.PrefabGreen = txtPrefabGreen.Text;

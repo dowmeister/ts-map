@@ -33,6 +33,9 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="CommandLine, Version=2.9.0.0, Culture=neutral, PublicKeyToken=5a870481e358d379, processorArchitecture=MSIL">
+      <HintPath>..\packages\CommandLineParser.2.9.0-preview1\lib\net461\CommandLine.dll</HintPath>
+    </Reference>
     <Reference Include="DotNetZip, Version=1.13.3.0, Culture=neutral, PublicKeyToken=6583c7c814667745, processorArchitecture=MSIL">
       <HintPath>..\packages\DotNetZip.1.13.3\lib\net40\DotNetZip.dll</HintPath>
     </Reference>
@@ -51,6 +54,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Extensions.cs" />
     <Compile Include="HashFiles\CityHash.cs" />
     <Compile Include="HashFiles\ScsEntry.cs" />
     <Compile Include="HashFiles\ScsRootFile.cs" />
@@ -59,11 +63,13 @@
     <Compile Include="JsonHelper.cs" />
     <Compile Include="Log.cs" />
     <Compile Include="MapPalette.cs" />
+    <Compile Include="MapSetContext.cs" />
     <Compile Include="MemoryHelper.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="HashFiles\RootFileSystem.cs" />
     <Compile Include="Helper.cs" />
     <Compile Include="RoadManager.cs" />
+    <Compile Include="RunOptionsContext.cs" />
     <Compile Include="Settings.cs" />
     <Compile Include="TsCity.cs" />
     <Compile Include="TsCountry.cs" />
@@ -86,6 +92,7 @@
     <Compile Include="TsItem\TsTrafficRuleItem.cs" />
     <Compile Include="TsItem\TsTrajectoryItem.cs" />
     <Compile Include="TsItem\TsTriggerItem.cs" />
+    <Compile Include="TsMapSet.cs" />
     <Compile Include="TsTypes.cs" />
     <Compile Include="TsMapOverlay.cs" />
     <Compile Include="TsMapper.cs" />

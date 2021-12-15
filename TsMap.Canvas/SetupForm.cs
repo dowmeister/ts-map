@@ -68,7 +68,7 @@ namespace TsMap.Canvas
             SettingsManager.Current.SaveSettings();
 
             Cursor = Cursors.WaitCursor;
-            new TsMapCanvas(this).Show();
+           new TsMapCanvas().Show();
             Hide();
         }
 

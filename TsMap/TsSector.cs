@@ -133,7 +133,7 @@ namespace TsMap
                         var item = new TsBusStopItem(this, lastOffset);
                         lastOffset += item.BlockSize;
                         Mapper.BusStops.Add(item);
-                        break;
+                            break;
                     }
                     case TsItemType.TrafficRule:
                     {

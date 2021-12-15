@@ -195,9 +195,9 @@
             // 
             // btnSave
             // 
-            this.btnSave.Location = new System.Drawing.Point(257, 241);
+            this.btnSave.Location = new System.Drawing.Point(16, 241);
             this.btnSave.Name = "btnSave";
-            this.btnSave.Size = new System.Drawing.Size(75, 23);
+            this.btnSave.Size = new System.Drawing.Size(316, 23);
             this.btnSave.TabIndex = 18;
             this.btnSave.Text = "Save";
             this.btnSave.UseVisualStyleBackColor = true;
@@ -229,7 +229,7 @@
             this.Controls.Add(this.label1);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.Name = "PaletteEditorForm";
-            this.Text = "PaletteEditorForm";
+            this.Text = "Palette Management";
             this.ResumeLayout(false);
             this.PerformLayout();
 

@@ -17,6 +17,7 @@ namespace TsMap
     {
         private readonly string _gameDir;
         private List<Mod> _mods;
+        private string _sourceDirFileFilter;
 
         public RootFileSystem Rfs;
         public bool IsEts2 = true;
@@ -51,10 +52,12 @@ namespace TsMap
 
         private List<TsSector> Sectors { get; set; }
 
-        public TsMapper(string gameDir, List<Mod> mods)
+        public TsMapper(string gameDir, List<Mod> mods, string sourceDirFileFilter = "*.scs")
         {
             _gameDir = gameDir;
             _mods = mods;
+            _sourceDirFileFilter = sourceDirFileFilter;
+
             Sectors = new List<TsSector>();
             LocalizationList.Add("None");
         }
@@ -529,13 +532,14 @@ namespace TsMap
                 return;
             }
 
-            Rfs = new RootFileSystem(_gameDir);
+            Rfs = new RootFileSystem(_gameDir, _sourceDirFileFilter);
 
             _mods.Reverse(); // Highest priority mods (top) need to be loaded last
 
             foreach (var mod in _mods)
             {
-                if (mod.Load) Rfs.AddSourceFile(mod.ModPath);
+                //if (mod.Load) 
+                Rfs.AddSourceFile(mod.ModPath);
             }
 
             Log.Msg($"Loaded all .scs files in {(DateTime.Now.Ticks - startTime) / TimeSpan.TicksPerMillisecond}ms");

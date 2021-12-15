@@ -29,6 +29,8 @@ namespace TsMap.Canvas
             txtMapPadding.Text = SettingsManager.Current.Settings.TileGenerator.MapPadding.ToString();
             txtTileSize.Text = SettingsManager.Current.Settings.TileGenerator.TileSize.ToString();
 
+            SetExportFlags();
+
             triStateTreeView1.ItemChecked += (TreeNode node) =>
             {
                 if (node.Name == "GenCityList")
@@ -39,8 +41,6 @@ namespace TsMap.Canvas
                 }
                 else if (node.Name == "GenOverlayList") MapOverlaysCheckBox.Checked = !node.Checked;
             };
-
-            SetExportFlags();
         }
 
         private RenderFlags GetRenderFlags()
@@ -85,6 +85,37 @@ namespace TsMap.Canvas
 
         private void GenerateBtn_Click(object sender, EventArgs e)
         {
+            this.SaveSettings();
+
+            /*var res = folderBrowserDialog1.ShowDialog();
+            if (res == DialogResult.OK)
+            {
+                if (!Directory.Exists(folderBrowserDialog1.SelectedPath)) return;
+
+                SettingsManager.Current.Settings.TileGenerator.LastTileMapPath = folderBrowserDialog1.SelectedPath;
+
+                SettingsManager.Current.SaveSettings();
+
+                GenerateTileMap();
+            }*/
+
+            GenerateTileMap();
+        }
+        
+        private void GenTilesCheck_CheckedChanged(object sender, EventArgs e)
+        {
+            StartZoomLevelBox.Enabled = GenTilesCheck.Checked;
+            EndZoomLevelBox.Enabled = GenTilesCheck.Checked;
+            triStateTreeView1.GetNodeByName("GenTileMapInfo").Checked = GenTilesCheck.Checked;
+        }
+
+        private void SaveSettings_Click(object sender, EventArgs e)
+        {
+            this.SaveSettings();
+        }
+
+        private void SaveSettings()
+        {
             var startZoomLevel = Convert.ToInt32(Math.Round(StartZoomLevelBox.Value, 0));
             var endZoomLevel = Convert.ToInt32(Math.Round(EndZoomLevelBox.Value, 0));
 
@@ -98,7 +129,7 @@ namespace TsMap.Canvas
             {
                 MessageBox.Show("Cannot set start zoom level lower than end zoom level");
                 return;
-            }        
+            }
 
             if (Convert.ToInt32(txtMapPadding.Text) <= 0)
             {
@@ -111,7 +142,7 @@ namespace TsMap.Canvas
                 MessageBox.Show("Tile size is invalid. Must be greater than 0");
             }
 
-           
+
             SettingsManager.Current.Settings.TileGenerator.ExportFlags = GetExportFlags();
             SettingsManager.Current.Settings.TileGenerator.MapPadding = Convert.ToInt32(txtMapPadding.Text);
             SettingsManager.Current.Settings.TileGenerator.TileSize = Convert.ToInt32(txtTileSize.Text);
@@ -121,25 +152,6 @@ namespace TsMap.Canvas
             SettingsManager.Current.Settings.TileGenerator.EndZoomLevel = endZoomLevel;
 
             SettingsManager.Current.SaveSettings();
-
-            var res = folderBrowserDialog1.ShowDialog();
-            if (res == DialogResult.OK)
-            {
-                if (!Directory.Exists(folderBrowserDialog1.SelectedPath)) return;
-
-                SettingsManager.Current.Settings.TileGenerator.LastTileMapPath = folderBrowserDialog1.SelectedPath;
-
-                SettingsManager.Current.SaveSettings();
-
-                GenerateTileMap();
-            }
-        }
-        
-        private void GenTilesCheck_CheckedChanged(object sender, EventArgs e)
-        {
-            StartZoomLevelBox.Enabled = GenTilesCheck.Checked;
-            EndZoomLevelBox.Enabled = GenTilesCheck.Checked;
-            triStateTreeView1.GetNodeByName("GenTileMapInfo").Checked = GenTilesCheck.Checked;
         }
     }
 }
