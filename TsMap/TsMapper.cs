@@ -42,6 +42,8 @@ namespace TsMap
         public readonly List<TsCompanyItem> Companies = new List<TsCompanyItem>();
         public readonly List<TsTriggerItem> Triggers = new List<TsTriggerItem>();
         public readonly List<TsBusStopItem> BusStops = new List<TsBusStopItem>();
+        public readonly List<TsCutsceneItem> Viewpoints = new List<TsCutsceneItem>();
+
 
         public readonly Dictionary<ulong, TsNode> Nodes = new Dictionary<ulong, TsNode>();
 
