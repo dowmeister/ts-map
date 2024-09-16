@@ -53,7 +53,7 @@ namespace TsMap.TsItem
                 TsPrefabItem855(startOffset);
             else
                 Logger.Instance.Error($"Unknown base file version ({Sector.Version}) for item {Type} " +
-                    $"in file '{Path.GetFileName(Sector.FilePath)}' @ {startOffset} from '{Sector.GetUberFile().Entry.GetArchiveFile().GetPath()}'");
+                    $"in file '{Path.GetFileName(Sector.FilePath)}' @ {startOffset} from '{Sector.GetUberFile().Entry.GetArchiveFile()?.GetPath()}'");
         }
 
         public void TsPrefabItem825(int startOffset)
@@ -68,7 +68,7 @@ namespace TsMap.TsItem
             {
                 Valid = false;
                 Logger.Instance.Error($"Could not find Prefab: '{ScsToken.TokenToString(prefabId)}'({prefabId:X}), item uid: 0x{Uid:X}, " +
-                        $"in {Path.GetFileName(Sector.FilePath)} @ {fileOffset} from '{Sector.GetUberFile().Entry.GetArchiveFile().GetPath()}'");
+                        $"in {Path.GetFileName(Sector.FilePath)} @ {fileOffset} from '{Sector.GetUberFile().Entry.GetArchiveFile()?.GetPath()}'");
             }
             var nodeCount = MemoryHelper.ReadInt32(Sector.Stream, fileOffset += 0x18); // 0x18(id & look & variant)
             fileOffset += 0x04; // set cursor after nodeCount
@@ -102,7 +102,7 @@ namespace TsMap.TsItem
             {
                 Valid = false;
                 Logger.Instance.Error($"Could not find Prefab: '{ScsToken.TokenToString(prefabId)}'({prefabId:X}), item uid: 0x{Uid:X}, " +
-                        $"in {Path.GetFileName(Sector.FilePath)} @ {fileOffset} from '{Sector.GetUberFile().Entry.GetArchiveFile().GetPath()}'");
+                        $"in {Path.GetFileName(Sector.FilePath)} @ {fileOffset} from '{Sector.GetUberFile().Entry.GetArchiveFile()?.GetPath()}'");
             }
 
             var additionalPartsCount = MemoryHelper.ReadInt32(Sector.Stream, fileOffset += 0x18); // 0x18(id & look & variant)
@@ -138,7 +138,7 @@ namespace TsMap.TsItem
             {
                 Valid = false;
                 Logger.Instance.Error($"Could not find Prefab: '{ScsToken.TokenToString(prefabId)}'({prefabId:X}), item uid: 0x{Uid:X}, " +
-                        $"in {Path.GetFileName(Sector.FilePath)} @ {fileOffset} from '{Sector.GetUberFile().Entry.GetArchiveFile().GetPath()}'");
+                        $"in {Path.GetFileName(Sector.FilePath)} @ {fileOffset} from '{Sector.GetUberFile().Entry.GetArchiveFile()?.GetPath()}'");
             }
 
             var additionalPartsCount = MemoryHelper.ReadInt32(Sector.Stream, fileOffset += 0x18); // 0x18(id & look & variant)
@@ -171,7 +171,7 @@ namespace TsMap.TsItem
             {
                 Valid = false;
                 Logger.Instance.Error($"Could not find Prefab: '{ScsToken.TokenToString(prefabId)}'({prefabId:X}), item uid: 0x{Uid:X}, " +
-                        $"in {Path.GetFileName(Sector.FilePath)} @ {fileOffset} from '{Sector.GetUberFile().Entry.GetArchiveFile().GetPath()}'");
+                        $"in {Path.GetFileName(Sector.FilePath)} @ {fileOffset} from '{Sector.GetUberFile().Entry.GetArchiveFile()?.GetPath()}'");
             }
 
             var additionalPartsCount = MemoryHelper.ReadInt32(Sector.Stream, fileOffset += 0x18); // 0x18(id & look & variant)
@@ -205,7 +205,7 @@ namespace TsMap.TsItem
             {
                 Valid = false;
                 Logger.Instance.Error($"Could not find Prefab: '{ScsToken.TokenToString(prefabId)}'({prefabId:X}), item uid: 0x{Uid:X}, " +
-                        $"in {Path.GetFileName(Sector.FilePath)} @ {fileOffset} from '{Sector.GetUberFile().Entry.GetArchiveFile().GetPath()}'");
+                        $"in {Path.GetFileName(Sector.FilePath)} @ {fileOffset} from '{Sector.GetUberFile().Entry.GetArchiveFile()?.GetPath()}'");
             }
             var additionalPartsCount = MemoryHelper.ReadInt32(Sector.Stream, fileOffset += 0x08 + 0x08); // 0x08(prefabId) + 0x08(m_variant)
             var nodeCount = MemoryHelper.ReadInt32(Sector.Stream, fileOffset += 0x04 + (additionalPartsCount * 0x08)); // 0x04(addPartsCount) + additionalParts
@@ -234,7 +234,7 @@ namespace TsMap.TsItem
             {
                 Valid = false;
                 Logger.Instance.Error($"Could not find Prefab: '{ScsToken.TokenToString(prefabId)}'({prefabId:X}), item uid: 0x{Uid:X}, " +
-                        $"in {Path.GetFileName(Sector.FilePath)} @ {fileOffset} from '{Sector.GetUberFile().Entry.GetArchiveFile().GetPath()}'");
+                        $"in {Path.GetFileName(Sector.FilePath)} @ {fileOffset} from '{Sector.GetUberFile().Entry.GetArchiveFile()?.GetPath()}'");
             }
             var additionalPartsCount = MemoryHelper.ReadInt32(Sector.Stream, fileOffset += 0x08 + 0x08); // 0x08(prefabId) + 0x08(m_variant)
             var nodeCount = MemoryHelper.ReadInt32(Sector.Stream, fileOffset += 0x04 + (additionalPartsCount * 0x08)); // 0x04(addPartsCount) + additionalParts

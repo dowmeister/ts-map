@@ -28,7 +28,7 @@ namespace TsMap.TsItem
             {
                 Valid = false;
                 Logger.Instance.Error($"Could not find City: '{ScsToken.TokenToString(cityId)}'({cityId:X}) item uid: 0x{Uid:X}, " +
-                    $"in {Path.GetFileName(Sector.FilePath)} @ {fileOffset} from '{Sector.GetUberFile().Entry.GetArchiveFile().GetPath()}'");
+                    $"in {Path.GetFileName(Sector.FilePath)} @ {fileOffset} from '{Sector.GetUberFile().Entry.GetArchiveFile()?.GetPath()}'");
             }
 
             Width = MemoryHelper.ReadSingle(Sector.Stream, fileOffset += 0x05 + 0x08); // 0x05(flags) + 0x08(cityId)

@@ -20,7 +20,7 @@ namespace TsMap.TsItem
                 TsBusStopItem836(startOffset);
             else
                 Logger.Instance.Error($"Unknown base file version ({Sector.Version}) for item {Type} " +
-                    $"in file '{Path.GetFileName(Sector.FilePath)}' @ {startOffset} from '{Sector.GetUberFile().Entry.GetArchiveFile().GetPath()}'");
+                    $"in file '{Path.GetFileName(Sector.FilePath)}' @ {startOffset} from '{Sector.GetUberFile().Entry.GetArchiveFile()?.GetPath()}'");
         }
 
         public void TsBusStopItem825(int startOffset)
@@ -57,7 +57,7 @@ namespace TsMap.TsItem
             {
                 Logger.Instance.Error(
                     $"Could not find node ({Nodes[0]:X}) for item uid: 0x{Uid:X}, " +
-                    $"in {Path.GetFileName(Sector.FilePath)} from '{Sector.GetUberFile().Entry.GetArchiveFile().GetPath()}'");
+                    $"in {Path.GetFileName(Sector.FilePath)} from '{Sector.GetUberFile().Entry.GetArchiveFile()?.GetPath()}'");
                 return;
             }
 

@@ -44,7 +44,7 @@ namespace TsMap.TsItem
             {
                 Logger.Instance.Error(
                     $"Could not find node ({Nodes[0]:X}) for item uid: 0x{Uid:X}, " +
-                    $"in {Path.GetFileName(Sector.FilePath)} from '{Sector.GetUberFile().Entry.GetArchiveFile().GetPath()}'");
+                    $"in {Path.GetFileName(Sector.FilePath)} from '{Sector.GetUberFile().Entry.GetArchiveFile()?.GetPath()}'");
                 return;
             }
 
@@ -53,7 +53,7 @@ namespace TsMap.TsItem
             {
                 Logger.Instance.Error(
                     $"Could not find Overlay: '{overlayName}'({ScsToken.StringToToken(overlayName):X}), item uid: 0x{Uid:X}, " +
-                    $"in {Path.GetFileName(Sector.FilePath)} from '{Sector.GetUberFile().Entry.GetArchiveFile().GetPath()}'");
+                    $"in {Path.GetFileName(Sector.FilePath)} from '{Sector.GetUberFile().Entry.GetArchiveFile()?.GetPath()}'");
             }
         }
     }

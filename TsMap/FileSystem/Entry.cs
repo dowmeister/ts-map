@@ -28,9 +28,16 @@
 
         private readonly ArchiveFile _archiveFile;
 
+        internal string _path;
+
         public Entry(ArchiveFile fsFile)
         {
             _archiveFile = fsFile;
+        }
+
+        public Entry(string path)
+        {
+            this._path = path;
         }
 
         /// <summary>

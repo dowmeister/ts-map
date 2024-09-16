@@ -21,7 +21,7 @@ namespace TsMap.TsItem
                 TsTriggerItem875(startOffset);
             else
                 Logger.Instance.Error($"Unknown base file version ({Sector.Version}) for item {Type} " +
-                    $"in file '{Path.GetFileName(Sector.FilePath)}' @ {startOffset} from '{Sector.GetUberFile().Entry.GetArchiveFile().GetPath()}'");
+                    $"in file '{Path.GetFileName(Sector.FilePath)}' @ {startOffset} from '{Sector.GetUberFile().Entry.GetArchiveFile()?.GetPath()}'");
         }
 
         private void CreateMapOverlay()

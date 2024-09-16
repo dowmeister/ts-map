@@ -55,6 +55,7 @@
     <Compile Include="FileSystem\Hash\HashEntry.cs" />
     <Compile Include="FileSystem\Hash\HashArchiveHeader.cs" />
     <Compile Include="FileSystem\ArchiveFile.cs" />
+    <Compile Include="FileSystem\LocalFileEntry.cs" />
     <Compile Include="FileSystem\Zip\ZipEntry.cs" />
     <Compile Include="LocalizationManager.cs" />
     <Compile Include="Helpers\Logger\LogLevel.cs" />

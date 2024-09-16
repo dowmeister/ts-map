@@ -11,7 +11,7 @@ namespace TsMap.TsItem.Shared
             if (sector.Version >= 884)
                 return Parse884(sector, startOffset);
             Logger.Instance.Error($"Unknown version ({sector.Version}) for QuadInfo " +
-                                  $"in file '{Path.GetFileName(sector.FilePath)}' @ {startOffset} from '{sector.GetUberFile().Entry.GetArchiveFile().GetPath()}'");
+                                  $"in file '{Path.GetFileName(sector.FilePath)}' @ {startOffset} from '{sector.GetUberFile().Entry.GetArchiveFile()?.GetPath()}'");
             return 0;
         }
 

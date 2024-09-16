@@ -23,6 +23,8 @@ namespace TsMap.FileSystem
         /// </summary>
         private readonly List<string> _subFilesNames = new List<string>();
 
+        public string VirtualPath { get; set; }
+
         public UberDirectory() { }
 
         /// <summary>

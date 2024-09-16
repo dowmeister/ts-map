@@ -74,23 +74,72 @@ namespace TsMap.FileSystem
         /// <param name="path">Path to the directory where to find the files to include</param>
         /// <param name="searchPattern">Search pattern to select specific files eg. "*.scs"</param>
         /// <returns>Whether or not all files were added successfully</returns>
-        public bool AddSourceDirectory(string path, string searchPattern = "*.scs")
+        public bool AddSourceDirectory(string path, string searchPattern = "*.zip")
         {
             if (!Directory.Exists(path))
             {
                 Logger.Instance.Error($"Could not find directory '{path}'");
                 return false;
             }
-            var scsFilesPaths = Directory.GetFiles(path, searchPattern);
+            
+            //var scsFilesPaths = Directory.GetFiles(path, searchPattern);
 
             var result = true;
 
-            foreach (var scsFilePath in scsFilesPaths)
+            /*foreach (var scsFilePath in scsFilesPaths)
             {
                 var fileResult = AddSourceFile(scsFilePath);
                 if (!fileResult) result = false;
+            }*/
+
+            var directories = Directory.GetDirectories(path);
+
+            UberDirectory parentDir;
+
+            foreach (string dir in directories)
+            {
+                string directoryName = new DirectoryInfo(dir).Name;
+
+                var parentDirHash = CityHash.CityHash64(directoryName);
+
+                if (this.Directories.ContainsKey(parentDirHash))
+                {
+                    parentDir = this.Directories[parentDirHash];
+                }
+                else
+                {
+                    parentDir = new UberDirectory();
+                    parentDir.VirtualPath = new DirectoryInfo(dir).Name;
+                    this.AddLocalFilesRecursive(parentDir, new DirectoryInfo(dir).Name, dir);
+                    this.Directories.Add(parentDirHash, parentDir);
+                }
             }
+
             return result;
+        }
+
+        private void AddLocalFilesRecursive(UberDirectory uberDirectory, string virtualPath, string realPath)
+        {
+            var files = Directory.GetFiles(realPath, "*.*");
+
+            foreach (string file in files)
+            {
+                string fileVirtualPath = virtualPath + "/" + new FileInfo(file).Name;
+                this.Files.Add(CityHash.CityHash64(fileVirtualPath), new UberFile(new LocalFileEntry(file)));
+                uberDirectory.AddSubFileName(new FileInfo(file).Name);
+            }
+
+            var dirs = Directory.GetDirectories(realPath);
+
+            foreach (string dir in dirs)
+            {
+                uberDirectory.AddSubDirName(new DirectoryInfo(dir).Name);
+
+                var subUberDir = new UberDirectory();                
+                subUberDir.VirtualPath = virtualPath + "/" + new DirectoryInfo(dir).Name;
+                this.AddLocalFilesRecursive(subUberDir, virtualPath + "/" + new DirectoryInfo(dir).Name, dir);
+                this.Directories.Add(CityHash.CityHash64(virtualPath + "/" + new DirectoryInfo(dir).Name), subUberDir);
+            }
         }
 
         /// <summary>
