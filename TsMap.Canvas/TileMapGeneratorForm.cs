@@ -8,9 +8,9 @@ namespace TsMap.Canvas
     {
 
         public delegate void GenerateTileMapEvent(string exportPath, int startZoomLevel, int endZoomLevel,
-            bool createTiles, ExportFlags exportFlags, RenderFlags renderFlags);
+            bool createTiles, RenderFlags renderFlags);
 
-        public delegate void ExportMapDataEvent(string exportPath, ExportFlags exportFlags);
+        public delegate void ExportMapDataEvent(string exportPath);
 
         public GenerateTileMapEvent GenerateTileMap;
 
@@ -150,7 +150,7 @@ namespace TsMap.Canvas
                 SettingsManager.Current.SaveSettings();
 
                 GenerateTileMap(folderBrowserDialog1.SelectedPath, startZoomLevel, endZoomLevel, GenTilesCheck.Checked,
-                    GetExportFlags(), GetRenderFlags());
+                    GetRenderFlags());
             }
         }
         
@@ -185,8 +185,7 @@ namespace TsMap.Canvas
 
                 SettingsManager.Current.SaveSettings();
 
-                ExportMapData(folderBrowserDialog1.SelectedPath,
-                    GetExportFlags());
+                ExportMapData(folderBrowserDialog1.SelectedPath);
             }
         }
     }

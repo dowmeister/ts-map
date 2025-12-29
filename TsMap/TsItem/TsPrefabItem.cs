@@ -270,22 +270,26 @@ namespace TsMap.TsItem
 
                 var overlayName = "";
                 var displayName = "";
+                string serviceType = null;
 
                 if (spawnPoint.Type == TsSpawnPointType.GasPos)
                 {
                     overlayName = "gas_ico";
                     displayName = "Fuel";
+                    serviceType = "Fuel Station";
                 }
 
                 else if (spawnPoint.Type == TsSpawnPointType.ServicePos)
                 {
                     overlayName = "service_ico";
                     displayName = "Service";
+                    serviceType = "Service Station";
                 }
                 else if (spawnPoint.Type == TsSpawnPointType.WeightStationPos)
                 {
                     overlayName = "weigh_station_ico";
                     displayName = "WeightStation";
+                    serviceType = "Weight Station";
                 }
                 else if (spawnPoint.Type == TsSpawnPointType.TruckDealerPos)
                 {
@@ -296,6 +300,7 @@ namespace TsMap.TsItem
                 {
                     overlayName = "garage_large_ico";
                     displayName = "Garage";
+                    serviceType = "Garage";
                 }
                 else if (spawnPoint.Type == TsSpawnPointType.RecruitmentPos)
                 {
@@ -305,6 +310,21 @@ namespace TsMap.TsItem
 
                 Sector.Mapper.OverlayManager.AddOverlay(overlayName, OverlayType.Map, newPoint.X, newPoint.Y,
                     displayName, DlcGuard, IsSecret);
+
+                // Add to services list if applicable
+                if (serviceType != null)
+                {
+                    var service = new TsServiceDef
+                    {
+                        X = newPoint.X,
+                        Y = newPoint.Y,
+                        Type = serviceType,
+                        City = Sector.Mapper.FindCityInGameId(newPoint.X, newPoint.Y),
+                        DlcGuard = DlcGuard,
+                        IsSecret = IsSecret
+                    };
+                    Sector.Mapper.Services.Add(service);
+                }
             }
 
             var lastId = -1;

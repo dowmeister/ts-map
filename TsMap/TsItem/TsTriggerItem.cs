@@ -1,14 +1,24 @@
 ﻿using System.IO;
+using System.Collections.Generic;
 using TsMap.Common;
 using TsMap.Helpers;
 using TsMap.Helpers.Logger;
 using TsMap.Map.Overlays;
+using System;
 
 namespace TsMap.TsItem
 {
     public class TsTriggerItem : TsItem
     {
         private bool _isSecret;
+
+        public float Range { get; private set; }
+        public float ResetDelay { get; private set; }
+        public float ResetDistance { get; private set; }
+        public float MinSpeed { get; private set; }
+        public float MaxSpeed { get; private set; }
+        public ulong[] TriggerActions { get; private set; }
+        public TsTriggerType TriggerType { get; private set; }
 
         public TsTriggerItem(TsSector sector, int startOffset) : base(sector, startOffset)
         {
@@ -24,9 +34,63 @@ namespace TsMap.TsItem
                     $"in file '{Path.GetFileName(Sector.FilePath)}' @ {startOffset} from '{Sector.GetUberFile().Entry.GetArchiveFile().GetPath()}'");
         }
 
-        private void CreateMapOverlay()
+        private void ParseTriggerActions(List<ulong> actions)
         {
-            Sector.Mapper.OverlayManager.AddOverlay("parking_ico", OverlayType.Map, X, Z, "Parking", DlcGuard, _isSecret);
+            TriggerActions = actions.ToArray();
+
+            // Determine trigger type based on actions
+            foreach (var action in actions)
+            {
+                //Console.WriteLine(ScsToken.TokenToString(action));
+
+                if (action == ScsToken.StringToToken("hud_parking"))
+                {
+                    TriggerType = TsTriggerType.Parking;
+                    Sector.Mapper.OverlayManager.AddOverlay("parking_ico", OverlayType.Map, X, Z, "Parking", DlcGuard, _isSecret);
+                    AddServiceToList("Parking");
+                }
+                else if (action == ScsToken.StringToToken("hud_speed_limit"))
+                {
+                    TriggerType = TsTriggerType.SpeedCamera;
+                    Sector.Mapper.OverlayManager.AddOverlay("speed_camera", OverlayType.Map, X, Z, "Speed Camera", DlcGuard, _isSecret);
+                    AddServiceToList("Speed Camera");
+                }
+                else if (action == ScsToken.StringToToken("hud_toll_gate"))
+                {
+                    TriggerType = TsTriggerType.TollGate;
+                    Sector.Mapper.OverlayManager.AddOverlay("toll_gate", OverlayType.Map, X, Z, "Toll Gate", DlcGuard, _isSecret);
+                    AddServiceToList("Toll Gate");
+                }
+                else if (action == ScsToken.StringToToken("hud_weight_station"))
+                {
+                    TriggerType = TsTriggerType.WeightStation;
+                    Sector.Mapper.OverlayManager.AddOverlay("weigh_station_ico", OverlayType.Map, X, Z, "Weight Station", DlcGuard, _isSecret);
+                    AddServiceToList("Weight Station");
+                }
+                // Add more trigger types as discovered
+            }
+        }
+
+        private void AddServiceToList(string serviceType)
+        {
+            var service = new TsServiceDef
+            {
+                X = X,
+                Y = Z,
+                Type = serviceType,
+                City = Sector.Mapper.FindCityInGameId(X, Z),
+                DlcGuard = DlcGuard,
+                IsSecret = _isSecret
+            };
+
+            if (serviceType == "Speed Camera")
+            {
+                service.Properties["MinSpeed"] = MinSpeed;
+                service.Properties["MaxSpeed"] = MaxSpeed;
+                service.Properties["Range"] = Range;
+            }
+
+            Sector.Mapper.Services.Add(service);
         }
 
         public void TsTriggerItem825(int startOffset)
@@ -38,13 +102,12 @@ namespace TsMap.TsItem
             var triggerActionCount = MemoryHelper.ReadInt32(Sector.Stream, fileOffset += 0x04 + (0x08 * tagCount)); // 0x04(tagCount) + tags
             fileOffset += 0x04; // cursor after triggerActionCount
 
+            var actions = new List<ulong>();
             for (var i = 0; i < triggerActionCount; i++)
             {
                 var action = MemoryHelper.ReadUInt64(Sector.Stream, fileOffset);
-                if (action == ScsToken.StringToToken("hud_parking"))
-                {
-                    CreateMapOverlay();
-                }
+                actions.Add(action);
+                
                 var hasParameters = MemoryHelper.ReadInt32(Sector.Stream, fileOffset += 0x08); // 0x08(action)
                 fileOffset += 0x04; // set cursor after hasParameters
                 if (hasParameters == 1)
@@ -58,8 +121,16 @@ namespace TsMap.TsItem
                 fileOffset += 0x04 + targetTagCount * 0x08; // 0x04(targetTagCount) + targetTags
             }
 
-            fileOffset += 0x18; // 0x18(range & reset_delay & reset_distance & min_speed & max_speed & flags2)
-            BlockSize = fileOffset - startOffset;
+            // Parse speed and range data FIRST
+            Range = MemoryHelper.ReadSingle(Sector.Stream, fileOffset);
+            ResetDelay = MemoryHelper.ReadSingle(Sector.Stream, fileOffset += 0x04);
+            ResetDistance = MemoryHelper.ReadSingle(Sector.Stream, fileOffset += 0x04);
+            MinSpeed = MemoryHelper.ReadSingle(Sector.Stream, fileOffset += 0x04);
+            MaxSpeed = MemoryHelper.ReadSingle(Sector.Stream, fileOffset += 0x04);
+            fileOffset += 0x04 + 0x04; // flags2 + padding
+
+            // Now parse actions with speed data available
+            ParseTriggerActions(actions);
         }
         public void TsTriggerItem829(int startOffset)
         {
@@ -71,13 +142,11 @@ namespace TsMap.TsItem
             var triggerActionCount = MemoryHelper.ReadInt32(Sector.Stream, fileOffset += 0x04 + (0x08 * nodeCount)); // 0x04(nodeCount) + nodeUids
             fileOffset += 0x04; // cursor after triggerActionCount
 
+            var actions = new List<ulong>();
             for (var i = 0; i < triggerActionCount; i++)
             {
                 var action = MemoryHelper.ReadUInt64(Sector.Stream, fileOffset);
-                if (action == ScsToken.StringToToken("hud_parking"))
-                {
-                    CreateMapOverlay();
-                }
+                actions.Add(action);
 
                 var hasOverride = MemoryHelper.ReadInt32(Sector.Stream, fileOffset += 0x08); // 0x08(action)
                 if (hasOverride > 0) fileOffset += 0x04 * hasOverride;
@@ -95,7 +164,8 @@ namespace TsMap.TsItem
                 fileOffset += 0x04 + targetTagCount * 0x08; // 0x04(targetTagCount) + targetTags
             }
 
-            fileOffset += 0x18; // 0x18(range & reset_delay & reset_distance & min_speed & max_speed & flags2)
+            ParseTriggerActions(actions);
+
             BlockSize = fileOffset - startOffset;
         }
 
@@ -110,13 +180,11 @@ namespace TsMap.TsItem
             var triggerActionCount = MemoryHelper.ReadInt32(Sector.Stream, fileOffset += 0x04 + (0x08 * nodeCount)); // 0x04(nodeCount) + nodeUids
             fileOffset += 0x04; // cursor after triggerActionCount
 
+            var actions = new List<ulong>();
             for (var i = 0; i < triggerActionCount; i++)
             {
                 var action = MemoryHelper.ReadUInt64(Sector.Stream, fileOffset);
-                if (action == ScsToken.StringToToken("hud_parking"))
-                {
-                    CreateMapOverlay();
-                }
+                actions.Add(action);
 
                 var hasOverride = MemoryHelper.ReadInt32(Sector.Stream, fileOffset += 0x08); // 0x08(action)
                 fileOffset += 0x04; // set cursor after hasOverride
@@ -136,7 +204,16 @@ namespace TsMap.TsItem
                 fileOffset += 0x04 + targetTagCount * 0x08 + 0x08; // 0x04(targetTagCount) + targetTags + 0x04(m_range & m_type)
             }
 
-            if (nodeCount == 1) fileOffset += 0x04; // 0x04(m_radius)
+            // Read range data BEFORE parsing actions
+            if (nodeCount == 1)
+            {
+                Range = MemoryHelper.ReadSingle(Sector.Stream, fileOffset);
+                fileOffset += 0x04; // 0x04(m_radius)
+            }
+
+            // Now parse actions with range data available
+            ParseTriggerActions(actions);
+
             BlockSize = fileOffset - startOffset;
         }
     }

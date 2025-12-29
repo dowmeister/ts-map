@@ -47,6 +47,7 @@ namespace TsMap
         public readonly List<TsBusStopItem> BusStops = new List<TsBusStopItem>();
         public readonly List<TsCargoDef> CargoDefs = new List<TsCargoDef>();
         public readonly List<TsCompanyDef> CompanyDefs = new List<TsCompanyDef>();
+        public readonly List<TsServiceDef> Services = new List<TsServiceDef>();
 
         public readonly Dictionary<ulong, TsNode> Nodes = new Dictionary<ulong, TsNode>();
 
@@ -439,20 +440,24 @@ namespace TsMap
             Logger.Instance.Info($"It took {(DateTime.Now.Ticks - startTime) / TimeSpan.TicksPerMillisecond} ms to fully load.");
         }
 
-        public void ExportInfo(ExportFlags exportFlags, string exportPath)
+        public void ExportInfo(string exportPath)
         {
-            if (exportFlags.IsActive(ExportFlags.CityList)) ExportCities(exportFlags, exportPath);
-            if (exportFlags.IsActive(ExportFlags.CountryList)) ExportCountries(exportFlags, exportPath);
-            if (exportFlags.IsActive(ExportFlags.OverlayList)) ExportOverlays(exportFlags, exportPath);
-            if (exportFlags.IsActive(ExportFlags.BusStops)) ExportBusStops(exportFlags, exportPath);
-            if (exportFlags.IsActive(ExportFlags.CargoDefs)) ExportCargoDefs(exportFlags, exportPath);
-            this.ExportCompanyDefs(exportFlags, exportPath);
+            //if (exportFlags.IsActive(ExportFlags.CityList))
+            ExportCities(exportPath);
+            //if (exportFlags.IsActive(ExportFlags.CountryList)) 
+            ExportCountries(exportPath);
+            //if (exportFlags.IsActive(ExportFlags.OverlayList)) 
+            ExportOverlays(exportPath);
+            ExportBusStops(exportPath);
+            ExportCargoDefs(exportPath);
+            ExportServices(exportPath);
+            ExportCompanyDefs(exportPath);
         }
 
         /// <summary>
         /// Creates a json file with the positions and names (w/ localizations) of all cities
         /// </summary>
-        public void ExportCities(ExportFlags exportFlags, string path)
+        public void ExportCities(string path)
         {
             if (!Directory.Exists(path)) return;
             var citiesJArr = new JArray();
@@ -475,8 +480,8 @@ namespace TsMap
                     Logger.Instance.Warning($"Could not find country for {city.City.Name}");
                 }
 
-                if (exportFlags.IsActive(ExportFlags.CityLocalizedNames))
-                {
+                //if (exportFlags.IsActive(ExportFlags.CityLocalizedNames))
+                //{
                     cityJObj["LocalizedNames"] = new JObject();
                     foreach (var locale in Localization.GetLocales())
                     {
@@ -486,7 +491,7 @@ namespace TsMap
                             cityJObj["LocalizedNames"][locale] = locCityName;
                         }
                     }
-                }
+                //}
 
                 citiesJArr.Add(cityJObj);
             }
@@ -495,7 +500,7 @@ namespace TsMap
         /// <summary>
         /// Creates a json file with the positions and names (w/ localizations) of all countries
         /// </summary>
-        public void ExportCountries(ExportFlags exportFlags, string path)
+        public void ExportCountries(string path)
         {
             if (!Directory.Exists(path)) return;
             var countriesJArr = new JArray();
@@ -504,8 +509,8 @@ namespace TsMap
                 var countryJObj = JObject.FromObject(country);
                 countryJObj["LocalizationToken"] = country.LocalizationToken;
 
-                if (exportFlags.IsActive(ExportFlags.CountryLocalizedNames))
-                {
+                //if (exportFlags.IsActive(ExportFlags.CountryLocalizedNames))
+                //{
                     countryJObj["LocalizedNames"] = new JObject();
                     foreach (var locale in Localization.GetLocales())
                     {
@@ -515,7 +520,7 @@ namespace TsMap
                             countryJObj["LocalizedNames"][locale] = locCountryName;
                         }
                     }
-                }
+                //}
                 countriesJArr.Add(countryJObj);
             }
             File.WriteAllText(Path.Combine(path, "Countries.json"), countriesJArr.ToString(Formatting.Indented));
@@ -539,11 +544,11 @@ namespace TsMap
         /// 128 = (World map, zoom 3) (7)
         /// </remarks>
         /// <param name="path"></param>
-        public void ExportOverlays(ExportFlags exportFlags, string path)
+        public void ExportOverlays(string path)
         {
             if (!Directory.Exists(path)) return;
 
-            var saveAsPNG = exportFlags.IsActive(ExportFlags.OverlayPNGs);
+            var saveAsPNG = true; // exportFlags.IsActive(ExportFlags.OverlayPNGs);
 
             var overlayPath = Path.Combine(path, "Overlays");
             if (saveAsPNG) Directory.CreateDirectory(overlayPath);
@@ -648,7 +653,7 @@ namespace TsMap
             return null;
         }
 
-        public void ExportBusStops(ExportFlags exportFlags, string path)
+        public void ExportBusStops(string path)
         {
             if (!Directory.Exists(path)) return;
 
@@ -728,14 +733,14 @@ namespace TsMap
             Logger.Instance.Info($"Loaded {cargoDefFiles.Count} cargo defs in {(DateTime.Now.Ticks - startTime) / TimeSpan.TicksPerMillisecond}ms");
         }
 
-        public void ExportCargoDefs(ExportFlags exportFlags, string path)
+        public void ExportCargoDefs(string path)
         {
             if (!Directory.Exists(path)) return;
 
             File.WriteAllText(Path.Combine(path, "CargoDefs.json"), JsonConvert.SerializeObject(this.CargoDefs, Formatting.Indented));
         }
 
-        public void ExportCompanyDefs(ExportFlags exportFlags, string path)
+        public void ExportCompanyDefs(string path)
         {
             if (!Directory.Exists(path)) return;
 
@@ -774,6 +779,13 @@ namespace TsMap
             }
 
             Logger.Instance.Info($"Loaded {companyDefFiles.Count} company defs in {(DateTime.Now.Ticks - startTime) / TimeSpan.TicksPerMillisecond}ms");
+        }
+
+        public void ExportServices(string path)
+        {
+            if (!Directory.Exists(path)) return;
+
+            File.WriteAllText(Path.Combine(path, "Services.json"), JsonConvert.SerializeObject(this.Services, Formatting.Indented));
         }
     }
 }

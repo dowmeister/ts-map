@@ -31,8 +31,9 @@ namespace TsMap
         CountryLocalizedNames = 1 << 5, // 32
         OverlayList = 1 << 6, // 64
         OverlayPNGs = 1 << 7, // 128
-        BusStops = 1 << 8,
-        CargoDefs = 1 << 9,
+        BusStops = 1 << 8, // 256
+        CargoDefs = 1 << 9, // 512
+        Services = 1 << 10, // 1024
         All = int.MaxValue
     }
 
@@ -98,6 +99,16 @@ namespace TsMap
         Cutscene = 46,
         VisibilityArea = 48,
     };
+
+    public enum TsTriggerType
+    {
+        Unknown = 0,
+        Parking = 1,
+        SpeedCamera = 2,
+        TollGate = 3,
+        WeightStation = 4,
+        BorderCrossing = 5
+    }
 
 
     // values from https://github.com/SCSSoftware/BlenderTools/blob/master/addon/io_scs_tools/consts.py

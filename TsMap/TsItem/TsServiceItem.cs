@@ -8,7 +8,7 @@ namespace TsMap.TsItem
     {
         public TsServiceItem(TsSector sector, int startOffset) : base(sector, startOffset)
         {
-            Valid = false;
+            Valid = true;
             if (Sector.Version < 855)
                 TsServiceItem825(startOffset);
             else if (Sector.Version >= 855)

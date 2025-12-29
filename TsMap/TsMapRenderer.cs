@@ -7,6 +7,7 @@ using TsMap.Common;
 using TsMap.Helpers;
 using TsMap.Helpers.Logger;
 using TsMap.Map.Overlays;
+using TsMap.TsItem;
 
 namespace TsMap
 {
@@ -54,7 +55,7 @@ namespace TsMap
             var ferryStartTime = DateTime.Now.Ticks;
             if (renderFlags.IsActive(RenderFlags.FerryConnections))
             {
-                var ferryPen = new Pen(palette.FerryLines, 50) {DashPattern = new[] {10f, 10f}};
+                var ferryPen = new Pen(palette.FerryLines, 50) { DashPattern = new[] { 10f, 10f } };
 
                 foreach (var ferryConnection in _mapper.FerryConnections)
                 {
@@ -370,9 +371,9 @@ namespace TsMap
 
                         for (var i = 0; i < 8; i++)
                         {
-                            var s = i / (float) (8 - 1);
-                            var x = (float) TsRoadLook.Hermite(s, sx, ex, tanSx, tanEx);
-                            var z = (float) TsRoadLook.Hermite(s, sz, ez, tanSz, tanEz);
+                            var s = i / (float)(8 - 1);
+                            var x = (float)TsRoadLook.Hermite(s, sx, ex, tanSx, tanEx);
+                            var z = (float)TsRoadLook.Hermite(s, sz, ez, tanSz, tanEz);
                             newPoints.Add(new PointF(x, z));
                         }
                         road.AddPoints(newPoints);
@@ -384,7 +385,7 @@ namespace TsMap
                     {
                         if (zoomIndex < 3)
                         {
-                            roadPen = new Pen(palette.Road, roadWidth) {DashPattern = new[] {1f, 1f}};
+                            roadPen = new Pen(palette.Road, roadWidth) { DashPattern = new[] { 1f, 1f } };
                         }
                         else // zoomed out with DashPattern causes OutOfMemory Exception
                         {

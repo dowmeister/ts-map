@@ -95,6 +95,7 @@ namespace TsMap
                     {
                         item = new TsCompanyItem(this, lastOffset);
                         lastOffset += item.BlockSize;
+                        if (item.Valid && !item.Hidden) Mapper.Companies.Add((TsCompanyItem)item);
                         break;
                     }
                     case TsItemType.Service:

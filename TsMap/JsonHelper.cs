@@ -19,7 +19,8 @@ namespace TsMap
                 ["y1"] = y1,
                 ["y2"] = y2,
                 ["minZoom"] = minZoom,
-                ["maxZoom"] = maxZoom
+                ["maxZoom"] = maxZoom,
+                ["tileSize"] = SettingsManager.Current.Settings.TileGenerator.TileSize
             };
 
             Directory.CreateDirectory(path);
@@ -37,7 +38,7 @@ namespace TsMap
             if (!File.Exists(Path.Combine(_settingsPath, "Settings.json"))) return new Settings();
             return JsonConvert.DeserializeObject<Settings>(File.ReadAllText(Path.Combine(_settingsPath, "Settings.json")));
         }
-        
+
         public static void SaveRoadPoints(List<dynamic> points)
         {
             Directory.CreateDirectory(_settingsPath);

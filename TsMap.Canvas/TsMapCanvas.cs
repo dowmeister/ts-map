@@ -144,7 +144,7 @@ namespace TsMap.Canvas
             }
         }
 
-        private void GenerateTileMap(int startZoomLevel, int endZoomLevel, string exportPath, bool createTiles, bool saveInfo, RenderFlags renderFlags)
+        private void GenerateTileMap(int startZoomLevel, int endZoomLevel, string exportPath, bool createTiles, RenderFlags renderFlags)
         {
             if (_isGeneratingTileMap)
             {
@@ -167,15 +167,13 @@ namespace TsMap.Canvas
                 }
                 RedrawMap(true);
 
-                if (saveInfo || startZoomLevel == 0)
+                if (startZoomLevel == 0)
                 {
                     ZoomOutAndCenterMap(SettingsManager.Current.Settings.TileGenerator.TileSize, SettingsManager.Current.Settings.TileGenerator.TileSize, out PointF pos,
                         out float zoom); // get zoom and start coords for tile level 0
-                    if (saveInfo)
-                    {
+
                         JsonHelper.SaveTileMapInfo(exportPath, pos.X, pos.X + SettingsManager.Current.Settings.TileGenerator.TileSize / zoom, pos.Y,
                             pos.Y + SettingsManager.Current.Settings.TileGenerator.TileSize / zoom, startZoomLevel, endZoomLevel);
-                    }
 
                     if (startZoomLevel == 0 && createTiles)
                     {
@@ -307,7 +305,7 @@ namespace TsMap.Canvas
             _tileMapGeneratorForm.Show();
             _tileMapGeneratorForm.BringToFront();
 
-            _tileMapGeneratorForm.GenerateTileMap += (exportPath, startZoomLevel, endZoomLevel, createTiles, exportFlags, renderFlags) => // Called when export button is pressed in TileMapGeneratorForm
+            _tileMapGeneratorForm.GenerateTileMap += (exportPath, startZoomLevel, endZoomLevel, createTiles, renderFlags) => // Called when export button is pressed in TileMapGeneratorForm
             {
                 _tileMapGeneratorForm.Close();
                 //_appSettings.LastTileMapPath = exportPath;
@@ -316,7 +314,7 @@ namespace TsMap.Canvas
                 SettingsManager.Current.Settings.LastTileMapPath = exportPath;
                 SettingsManager.Current.SaveSettings();
 
-                _mapper.ExportInfo(exportFlags, exportPath);
+                _mapper.ExportInfo(exportPath);
 
                 if (startZoomLevel < 0 || endZoomLevel < 0) return;
                 if (startZoomLevel > endZoomLevel)
@@ -326,12 +324,12 @@ namespace TsMap.Canvas
                     endZoomLevel = tmp;
                 }
 
-                GenerateTileMap(startZoomLevel, endZoomLevel, exportPath, createTiles, (exportFlags & ExportFlags.TileMapInfo) == ExportFlags.TileMapInfo, renderFlags);
+                GenerateTileMap(startZoomLevel, endZoomLevel, exportPath, createTiles, renderFlags);
             };
 
-            _tileMapGeneratorForm.ExportMapData += (exportPath, exportFlags) =>
+            _tileMapGeneratorForm.ExportMapData += (exportPath) =>
             {
-                _mapper.ExportInfo(exportFlags, exportPath);
+                _mapper.ExportInfo(exportPath);
 
                 MessageBox.Show("Map Data exported", "Map Info Export",
                         MessageBoxButtons.OK, MessageBoxIcon.Information);
