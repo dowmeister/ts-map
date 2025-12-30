@@ -452,6 +452,9 @@ namespace TsMap
             ExportCargoDefs(exportPath);
             ExportServices(exportPath);
             ExportCompanyDefs(exportPath);
+            ExportRoads(exportPath); // Add roads export for 3D viewer
+            ExportPrefabs(exportPath); // Add prefabs export for 3D viewer
+            ExportBuildings(exportPath); // Add buildings export for 3D viewer
         }
 
         /// <summary>
@@ -786,6 +789,186 @@ namespace TsMap
             if (!Directory.Exists(path)) return;
 
             File.WriteAllText(Path.Combine(path, "Services.json"), JsonConvert.SerializeObject(this.Services, Formatting.Indented));
+        }
+
+        public void ExportRoads(string path)
+        {
+            if (!Directory.Exists(path)) return;
+
+            var roadsPath = Path.Combine(path, "roads");
+            Directory.CreateDirectory(roadsPath);
+
+            // Define chunk size (in game units)
+            const int chunkSize = 2000; // Each chunk covers 2000x2000 game units
+
+            // Group roads by spatial chunks
+            var roadChunks = new Dictionary<string, List<JObject>>();
+
+            foreach (var road in Roads)
+            {
+                if (road.Hidden) continue;
+
+                var startNode = road.GetStartNode();
+                var endNode = road.GetEndNode();
+
+                if (startNode == null || endNode == null) continue;
+
+                // Calculate which chunk this road belongs to (based on start node)
+                int chunkX = (int)Math.Floor(startNode.X / chunkSize);
+                int chunkZ = (int)Math.Floor(startNode.Z / chunkSize);
+                string chunkKey = $"{chunkX}_{chunkZ}";
+
+                if (!roadChunks.ContainsKey(chunkKey))
+                {
+                    roadChunks[chunkKey] = new List<JObject>();
+                }
+
+                var roadObj = new JObject
+                {
+                    ["startNode"] = new JObject
+                    {
+                        ["X"] = startNode.X,
+                        ["Z"] = startNode.Z,
+                        ["Rotation"] = startNode.Rotation
+                    },
+                    ["endNode"] = new JObject
+                    {
+                        ["X"] = endNode.X,
+                        ["Z"] = endNode.Z,
+                        ["Rotation"] = endNode.Rotation
+                    },
+                    ["width"] = road.RoadLook?.GetWidth() ?? 10,
+                    ["isSecret"] = road.IsSecret,
+                    ["dlcGuard"] = road.DlcGuard
+                };
+
+                // Add bezier curve points if available
+                if (road.HasPoints())
+                {
+                    var pointsArray = new JArray();
+                    foreach (var point in road.GetPoints())
+                    {
+                        pointsArray.Add(new JObject
+                        {
+                            ["X"] = point.X,
+                            ["Z"] = point.Y // Y in PointF is actually Z in game coords
+                        });
+                    }
+                    roadObj["points"] = pointsArray;
+                }
+
+                roadChunks[chunkKey].Add(roadObj);
+            }
+
+            // Save each chunk as separate file
+            foreach (var chunk in roadChunks)
+            {
+                var chunkArray = new JArray(chunk.Value);
+                File.WriteAllText(
+                    Path.Combine(roadsPath, $"chunk_{chunk.Key}.json"),
+                    chunkArray.ToString(Formatting.None) // No indentation to save space
+                );
+            }
+
+            // Create index file with chunk metadata
+            var indexArray = new JArray();
+            foreach (var chunk in roadChunks)
+            {
+                var parts = chunk.Key.Split('_');
+                indexArray.Add(new JObject
+                {
+                    ["chunkX"] = int.Parse(parts[0]),
+                    ["chunkZ"] = int.Parse(parts[1]),
+                    ["roadCount"] = chunk.Value.Count,
+                    ["file"] = $"chunk_{chunk.Key}.json"
+                });
+            }
+
+            File.WriteAllText(
+                Path.Combine(path, "roads_index.json"),
+                indexArray.ToString(Formatting.Indented)
+            );
+
+            Logger.Instance.Info($"Exported {Roads.Count} roads across {roadChunks.Count} chunks");
+        }
+
+        public void ExportPrefabs(string path)
+        {
+            if (!Directory.Exists(path)) return;
+
+            var prefabsData = new JArray();
+
+            foreach (var prefab in Prefabs)
+            {
+                if (prefab.Hidden) continue;
+
+                // Get all nodes for this prefab
+                var nodes = new JArray();
+                foreach (var nodeUid in prefab.Nodes)
+                {
+                    var node = GetNodeByUid(nodeUid);
+                    if (node != null)
+                    {
+                        nodes.Add(new JObject
+                        {
+                            ["X"] = node.X,
+                            ["Z"] = node.Z,
+                            ["Rotation"] = node.Rotation
+                        });
+                    }
+                }
+
+                if (nodes.Count < 3) continue; // Need at least 3 nodes for a polygon
+
+                var prefabObj = new JObject
+                {
+                    ["nodes"] = nodes,
+                    ["category"] = prefab.Prefab?.Category ?? "road",
+                    ["isSecret"] = prefab.IsSecret,
+                    ["dlcGuard"] = prefab.DlcGuard,
+                    ["origin"] = prefab.Origin
+                };
+
+                prefabsData.Add(prefabObj);
+            }
+
+            File.WriteAllText(
+                Path.Combine(path, "Prefabs.json"),
+                prefabsData.ToString(Formatting.None) // No indentation to save space
+            );
+
+            Logger.Instance.Info($"Exported {prefabsData.Count} prefabs to Prefabs.json");
+        }
+
+        public void ExportBuildings(string path)
+        {
+            if (!Directory.Exists(path)) return;
+
+            var buildingsData = new JArray();
+
+            // Export company buildings as 3D structures
+            foreach (var overlay in OverlayManager.GetOverlays())
+            {
+                if (overlay.OverlayType == Map.Overlays.OverlayType.Company)
+                {
+                    buildingsData.Add(new JObject
+                    {
+                        ["X"] = overlay.Position.X,
+                        ["Z"] = overlay.Position.Y,
+                        ["type"] = "company",
+                        ["name"] = overlay.OverlayName,
+                        ["dlcGuard"] = overlay.DlcGuard,
+                        ["isSecret"] = overlay.IsSecret
+                    });
+                }
+            }
+
+            File.WriteAllText(
+                Path.Combine(path, "Buildings.json"),
+                buildingsData.ToString(Formatting.None)
+            );
+
+            Logger.Instance.Info($"Exported {buildingsData.Count} buildings to Buildings.json");
         }
     }
 }

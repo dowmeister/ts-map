@@ -261,3 +261,5 @@ __pycache__/
 *.pyc
 
 /map_data/**/*
+
+/ts-map-3d-viewer/data/**/*
