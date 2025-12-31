@@ -452,9 +452,9 @@ namespace TsMap
             ExportCargoDefs(exportPath);
             ExportServices(exportPath);
             ExportCompanyDefs(exportPath);
-            ExportRoads(exportPath); // Add roads export for 3D viewer
-            ExportPrefabs(exportPath); // Add prefabs export for 3D viewer
-            ExportBuildings(exportPath); // Add buildings export for 3D viewer
+            //ExportRoads(exportPath); // Add roads export for 3D viewer
+            //ExportPrefabs(exportPath); // Add prefabs export for 3D viewer
+            //ExportBuildings(exportPath); // Add buildings export for 3D viewer
         }
 
         /// <summary>

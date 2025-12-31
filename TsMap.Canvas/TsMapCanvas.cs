@@ -172,8 +172,8 @@ namespace TsMap.Canvas
                     ZoomOutAndCenterMap(SettingsManager.Current.Settings.TileGenerator.TileSize, SettingsManager.Current.Settings.TileGenerator.TileSize, out PointF pos,
                         out float zoom); // get zoom and start coords for tile level 0
 
-                        JsonHelper.SaveTileMapInfo(exportPath, pos.X, pos.X + SettingsManager.Current.Settings.TileGenerator.TileSize / zoom, pos.Y,
-                            pos.Y + SettingsManager.Current.Settings.TileGenerator.TileSize / zoom, startZoomLevel, endZoomLevel);
+                    JsonHelper.SaveTileMapInfo(exportPath, pos.X, pos.X + SettingsManager.Current.Settings.TileGenerator.TileSize / zoom, pos.Y,
+                        pos.Y + SettingsManager.Current.Settings.TileGenerator.TileSize / zoom, startZoomLevel, endZoomLevel);
 
                     if (startZoomLevel == 0 && createTiles)
                     {
@@ -188,7 +188,7 @@ namespace TsMap.Canvas
 
                 for (int z = startZoomLevel; z <= endZoomLevel; z++) // https://wiki.openstreetmap.org/wiki/Slippy_map_tilenames
                 {
-                    ZoomOutAndCenterMap((int) Math.Pow(2, z) * SettingsManager.Current.Settings.TileGenerator.TileSize, (int) Math.Pow(2, z) * SettingsManager.Current.Settings.TileGenerator.TileSize,
+                    ZoomOutAndCenterMap((int)Math.Pow(2, z) * SettingsManager.Current.Settings.TileGenerator.TileSize, (int)Math.Pow(2, z) * SettingsManager.Current.Settings.TileGenerator.TileSize,
                         out PointF pos, out float zoom); // get zoom and start coords for current tile level
 
                     for (int x = 0; x < Math.Pow(2, z); x++)
@@ -260,7 +260,7 @@ namespace TsMap.Canvas
 
                     e.Graphics.ResetTransform();
                     e.Graphics.FillRectangle(Brushes.Black, new Rectangle(0, 0, e.ClipRectangle.Width, e.ClipRectangle.Height));
-                    e.Graphics.DrawString( $"Generating Tile Map, current tile: {_currentGeneratedTile}/{_totalTileCount}", font,
+                    e.Graphics.DrawString($"Generating Tile Map, current tile: {_currentGeneratedTile}/{_totalTileCount}", font,
                         Brushes.CornflowerBlue, 10, 10);
 
                     if (_totalTileCount == 0)
@@ -331,7 +331,12 @@ namespace TsMap.Canvas
             {
                 _mapper.ExportInfo(exportPath);
 
-                MessageBox.Show("Map Data exported", "Map Info Export",
+                // Export GeoJSON files for vector tiles
+                var geoJsonExporter = new GeoJsonExporter(_mapper);
+                var geoJsonPath = Path.Combine(exportPath, "geojson");
+                geoJsonExporter.ExportAll(geoJsonPath);
+
+                MessageBox.Show("Map Data and GeoJSON exported", "Map Info Export",
                         MessageBoxButtons.OK, MessageBoxIcon.Information);
             };
         }

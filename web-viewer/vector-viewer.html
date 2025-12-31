@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>ETS2 Vector Map</title>
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+    <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a1a;
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+            background-color: #1a1a1a;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <script>
+        // Load overlay images dynamically
+        async function loadOverlayImages(map) {
+            try {
+                const response = await fetch('../map_data/ets2/overlay_images/');
+                // For now, we'll use a simpler approach - load common company logos
+                // The actual implementation would need a sprite sheet or individual image loading
+
+                // For services (non-company overlays), use emoji as fallback
+                return true;
+            } catch (error) {
+                console.warn('Could not load overlay images:', error);
+                return false;
+            }
+        }
+
+        const map = new maplibregl.Map({
+            container: 'map',
+            projection: 'mercator',  // Flat map without earth curvature
+            style: {
+                version: 8,
+                glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+                sources: {
+                    'ets2-map': {
+                        type: 'vector',
+                        tiles: ['http://localhost:8080/data/map/{z}/{x}/{y}.pbf'],
+                        minzoom: 0,
+                        maxzoom: 8
+                    }
+                },
+                layers: [
+                    {
+                        id: 'background',
+                        type: 'background',
+                        paint: {
+                            'background-color': '#1a1a1a'
+                        }
+                    },
+                    {
+                        id: 'roads',
+                        type: 'fill',
+                        source: 'ets2-map',
+                        'source-layer': 'roads',
+                        paint: {
+                            'fill-color': '#ff9900',
+                            'fill-opacity': 1.0,
+                            'fill-antialias': false,
+                            'fill-outline-color': '#ff9900'
+                        },
+                    },
+                    {
+                        id: 'prefab_roads',
+                        type: 'fill',
+                        source: 'ets2-map',
+                        'source-layer': 'prefab_roads',
+                        paint: {
+                            'fill-color': '#ff9900',
+                            'fill-opacity': 1.0,
+                            'fill-antialias': false,  // Disable antialiasing to prevent seams
+                            'fill-outline-color': '#ff9900'  // Match outline to fill - no visible boundaries
+                        }
+                    },
+                    {
+                        id: 'ferries',
+                        type: 'line',
+                        source: 'ets2-map',
+                        'source-layer': 'ferries',
+                        paint: {
+                            'line-color': '#0099ff',
+                            'line-width': [
+                                'interpolate',
+                                ['linear'],
+                                ['zoom'],
+                                4, 1,     // At zoom 4, width 1px
+                                6, 2,     // At zoom 6, width 2px
+                                8, 3,     // At zoom 8, width 3px
+                                10, 4     // At zoom 10, width 4px
+                            ],
+                            'line-dasharray': [2, 2]  // Dashed line for ferries
+                        }
+                    },
+                    {
+                        id: 'prefab-flat',
+                        type: 'fill',
+                        source: 'ets2-map',
+                        'source-layer': 'prefab_flat',
+                        paint: {
+                            'fill-color': ['get', 'color'],
+                            'fill-opacity': 0.4
+                        }
+                    },
+                    {
+                        id: 'prefab-buildings',
+                        type: 'fill-extrusion',
+                        source: 'ets2-map',
+                        'source-layer': 'prefab_buildings',
+                        paint: {
+                            'fill-extrusion-color': ['get', 'color'],
+                            'fill-extrusion-height': 600,
+                            'fill-extrusion-base': 0,
+                            'fill-extrusion-opacity': 1
+                        }
+                    },
+                    {
+                        id: 'map-flat',
+                        type: 'fill',
+                        source: 'ets2-map',
+                        'source-layer': 'map_flat',
+                        paint: {
+                            'fill-color': ['get', 'color'],
+                            'fill-opacity': 0.4
+                        }
+                    },
+                    {
+                        id: 'map-buildings',
+                        type: 'fill-extrusion',
+                        source: 'ets2-map',
+                        'source-layer': 'map_buildings',
+                        paint: {
+                            'fill-extrusion-color': ['get', 'color'],
+                            'fill-extrusion-height': 600,
+                            'fill-extrusion-base': 0,
+                            'fill-extrusion-opacity': 1
+                        }
+                    },
+                    {
+                        id: 'companies',
+                        type: 'circle',
+                        source: 'ets2-map',
+                        'source-layer': 'companies',
+                        paint: {
+                            'circle-radius': 3,
+                            'circle-color': '#ff6600',
+                            'circle-stroke-width': 1,
+                            'circle-stroke-color': '#ffffff'
+                        }
+                    },
+                    {
+                        id: 'overlays',
+                        type: 'symbol',
+                        source: 'ets2-map',
+                        'source-layer': 'overlays',
+                        layout: {
+                            'icon-image': ['get', 'image'],
+                            'icon-size': [
+                                'interpolate',
+                                ['linear'],
+                                ['zoom'],
+                                4, 0.3,   // At zoom 4, size 0.3
+                                6, 0.5,   // At zoom 6, size 0.5
+                                8, 0.8,   // At zoom 8, size 0.8
+                                10, 1.2   // At zoom 10, size 1.2
+                            ],
+                            'icon-allow-overlap': true,
+                            'icon-ignore-placement': true
+                        }
+                    },
+                    {
+                        id: 'city-labels',
+                        type: 'symbol',
+                        source: 'ets2-map',
+                        'source-layer': 'cities',
+                        layout: {
+                            'text-field': ['get', 'localized_name'], // o 'name' se preferisci
+                            'text-size': 14,
+                            'text-anchor': 'center',
+                            'text-offset': [0, 0.5], // opzionale, per spostare il testo
+                            'text-allow-overlap': false, // evita sovrapposizioni
+                            'text-ignore-placement': false
+                        },
+                        paint: {
+                            'text-color': '#000000',
+                            'text-halo-color': '#ffffff',
+                            'text-halo-width': 2 // bordo bianco attorno al testo per leggibilità
+                        }
+                    }
+                ]
+            },
+            center: [10, 50],  // Center of Europe (roughly)
+            zoom: 5,
+            pitch: 45,  // Isometric view to show 3D building elevation
+            bearing: 0,
+            renderWorldCopies: false  // Don't repeat the map - this is a fixed game map, not the earth
+        });
+
+        map.addControl(new maplibregl.NavigationControl());
+
+        // Enable terrain/3D controls
+        map.dragRotate.enable();
+        map.touchZoomRotate.enableRotation();
+
+        // Load overlay images after map loads
+        map.on('load', () => {
+            console.log('Map loaded successfully!');
+        });
+
+        // Dynamically load overlay images when MapLibre requests them
+        map.on('styleimagemissing', (e) => {
+            const imageId = e.id;
+            console.log('Loading image:', imageId);
+
+            // Load the image from the exported overlay_images directory
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+
+            img.onload = () => {
+                if (!map.hasImage(imageId)) {
+                    map.addImage(imageId, img);
+                    console.log('Image loaded:', imageId);
+                }
+            };
+
+            img.onerror = () => {
+                console.warn('Failed to load image:', imageId);
+                // Create a fallback placeholder image
+                const size = 32;
+                const canvas = document.createElement('canvas');
+                canvas.width = size;
+                canvas.height = size;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#ffaa00';
+                ctx.beginPath();
+                ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                if (!map.hasImage(imageId)) {
+                    map.addImage(imageId, canvas);
+                }
+            };
+
+            // Try to load from the overlay_images directory
+            img.src = `../map_data/ets2/overlay_images/${imageId}`;
+        });
+
+        map.dragPan.enable();
+        map.dragRotate.enable(); // rotazione con Ctrl+drag o touch a 2 dita
+        map.touchZoomRotate.enable();
+        map.touchPitch.enable(); // pitch con touch a 2 dita
+    </script>
+</body>
+
+</html>
