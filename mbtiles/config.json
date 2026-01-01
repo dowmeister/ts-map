@@ -1,0 +1,10 @@
+{
+  "data": {
+    "ets2-vector": {
+      "mbtiles": "ets2.mbtiles"
+    },
+    "ats-vector": {
+      "mbtiles": "ats.mbtiles"
+    }
+  }
+}

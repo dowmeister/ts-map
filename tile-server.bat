@@ -1,1 +1,1 @@
-tileserver-gl-light map_data\ets2\map.mbtiles
+tileserver-gl-light -c mbtiles\config.json

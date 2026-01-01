@@ -23,6 +23,8 @@ namespace TsMap
             _mapper = mapper;
         }
 
+        private static bool _loggedOnce = false;
+
         /// <summary>
         /// Convert game coordinates to WGS84 longitude/latitude
         /// </summary>
@@ -34,8 +36,41 @@ namespace TsMap
             var normalizedX = (gameX - _mapper.minX) / width;
             var normalizedZ = (gameZ - _mapper.minZ) / height;
 
-            var lon = (normalizedX * 360.0) - 180.0;
-            var lat = 90.0 - (normalizedZ * 180.0);
+            // Use larger extent for better visibility at low zoom, but preserve aspect ratio
+            const double maxExtent = 70.0; // degrees - stay very close to equator for minimal distortion
+            var aspectRatio = width / height;
+
+            double lonRange, latRange;
+            if (aspectRatio > 1.0)
+            {
+                // Map is wider than tall
+                lonRange = maxExtent;
+                latRange = maxExtent / aspectRatio;
+            }
+            else
+            {
+                // Map is taller than wide
+                latRange = maxExtent;
+                lonRange = maxExtent * aspectRatio;
+            }
+
+            // Log once for debugging
+            if (!_loggedOnce)
+            {
+                Console.WriteLine("=== GameToLatLng Coordinate Conversion ===");
+                Console.WriteLine($"Map bounds - minX: {_mapper.minX}, maxX: {_mapper.maxX}");
+                Console.WriteLine($"Map bounds - minZ: {_mapper.minZ}, maxZ: {_mapper.maxZ}");
+                Console.WriteLine($"Width: {width}, Height: {height}");
+                Console.WriteLine($"Aspect Ratio (width/height): {aspectRatio:F4}");
+                Console.WriteLine($"Longitude Range: {lonRange:F2}° (from {-lonRange / 2:F2}° to {lonRange / 2:F2}°)");
+                Console.WriteLine($"Latitude Range: {latRange:F2}° (from {-latRange / 2:F2}° to {latRange / 2:F2}°)");
+                Console.WriteLine($"Map orientation: {(aspectRatio > 1.0 ? "Wider than tall" : "Taller than wide")}");
+                Console.WriteLine("==========================================");
+                _loggedOnce = true;
+            }
+
+            var lon = (normalizedX * lonRange) - (lonRange / 2.0);
+            var lat = (latRange / 2.0) - (normalizedZ * latRange);
 
             return (lon, lat);
         }
