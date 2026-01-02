@@ -1,0 +1,36 @@
+services:
+  # Tippecanoe service for generating vector tiles
+  tippecanoe:
+    build:
+      context: .
+      dockerfile: Dockerfile.tippecanoe
+    container_name: tsmap-tippecanoe
+    volumes:
+      - ./map_data:/data:ro
+      - ./mbtiles:/output:ro
+    working_dir: /data
+    command: ["tail", "-f", "/dev/null"]  # Keep container running
+    profiles:
+      - tools
+
+  # Tile server for serving mbtiles
+  tileserver:
+    image: maptiler/tileserver-gl-light:latest
+    container_name: tsmap-tileserver
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./mbtiles:/data
+    command: ["--port", "8080", "--verbose"]
+    restart: unless-stopped
+
+  # Web viewer server
+  webserver:
+    image: nginx:alpine
+    container_name: tsmap-webserver
+    ports:
+      - "5500:80"
+    volumes:
+      - ./web-viewer:/usr/share/nginx/html
+      - ./map_data:/usr/share/nginx/html/map_data:ro
+    restart: unless-stopped

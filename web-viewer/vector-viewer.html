@@ -273,22 +273,50 @@
                         }
                     },
                     {
+                        id: 'city-pins',
+                        type: 'circle',
+                        source: 'map',
+                        'source-layer': 'cities',
+                        paint: {
+                            'circle-radius': [
+                                'interpolate',
+                                ['linear'],
+                                ['zoom'],
+                                4, 4,     // At zoom 4, radius 4px
+                                6, 6,     // At zoom 6, radius 6px
+                                8, 8,     // At zoom 8, radius 8px
+                                10, 10    // At zoom 10, radius 10px
+                            ],
+                            'circle-color': '#ff3333',
+                            'circle-stroke-width': 2,
+                            'circle-stroke-color': '#ffffff'
+                        }
+                    },
+                    {
                         id: 'city-labels',
                         type: 'symbol',
                         source: 'map',
                         'source-layer': 'cities',
                         layout: {
-                            'text-field': ['get', 'localized_name'], // o 'name' se preferisci
-                            'text-size': 14,
-                            'text-anchor': 'center',
-                            'text-offset': [0, 0.5], // opzionale, per spostare il testo
-                            'text-allow-overlap': false, // evita sovrapposizioni
+                            'text-field': ['get', 'localized_name'],
+                            'text-size': [
+                                'interpolate',
+                                ['linear'],
+                                ['zoom'],
+                                4, 11,    // At zoom 4, size 11px
+                                6, 13,    // At zoom 6, size 13px
+                                8, 16,    // At zoom 8, size 16px
+                                10, 20    // At zoom 10, size 20px
+                            ],
+                            'text-anchor': 'top',
+                            'text-offset': [0, 0.8],
+                            'text-allow-overlap': false,
                             'text-ignore-placement': false
                         },
                         paint: {
-                            'text-color': '#000000',
-                            'text-halo-color': '#ffffff',
-                            'text-halo-width': 2 // bordo bianco attorno al testo per leggibilità
+                            'text-color': '#ffffff',
+                            'text-halo-color': '#000000',
+                            'text-halo-width': 2.5
                         }
                     }
                 ]

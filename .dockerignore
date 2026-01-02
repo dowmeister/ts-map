@@ -1,0 +1,15 @@
+node_modules
+.git
+.vs
+bin
+obj
+*.user
+*.suo
+packages
+TsMap/bin
+TsMap/obj
+TsMap.Canvas/bin
+TsMap.Canvas/obj
+TsMap.Cli/bin
+TsMap.Cli/obj
+*.mbtiles-journal

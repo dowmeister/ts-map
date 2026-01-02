@@ -1,1 +1,0 @@
-.\TsMap.Cli\bin\Release\net8.0\TsMap.Cli.exe -g "C:\Program Files (x86)\Steam\steamapps\common\Euro Truck Simulator 2" -o "C:\personal\ts-map\map_data\ets2" -f geojson 

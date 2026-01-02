@@ -1,0 +1,26 @@
+# Build tippecanoe from source (latest version)
+FROM ubuntu:22.04
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libsqlite3-dev \
+    zlib1g-dev \
+    git \
+    bash \
+    && rm -rf /var/lib/apt/lists/*
+
+# Clone and build tippecanoe
+RUN git clone https://github.com/felt/tippecanoe.git /tmp/tippecanoe && \
+    cd /tmp/tippecanoe && \
+    make -j$(nproc) && \
+    make install && \
+    cd / && \
+    rm -rf /tmp/tippecanoe
+
+# Verify installation
+RUN tippecanoe --version
+
+WORKDIR /data
+
+CMD ["bash"]

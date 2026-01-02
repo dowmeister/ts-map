@@ -263,3 +263,5 @@ __pycache__/
 /map_data/**/*
 /mbtiles/*.mbtiles
 /mbtiles/*.mbtiles-journal
+
+/web-viewer/map_data/**/*
