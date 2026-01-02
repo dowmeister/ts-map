@@ -152,6 +152,14 @@ class Program
                     Console.ForegroundColor = ConsoleColor.Green;
                     Console.WriteLine("✓");
                     Console.ResetColor();
+
+                    Console.Write("  → VectorTileMapInfo.json... ");
+                    JsonHelper.SaveVectorTileMapInfo(outputDir.FullName, mapper.minX, mapper.maxX, mapper.minZ, mapper.maxZ);
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine("✓");
+                    Console.ResetColor();
+
+                    mapper.ExportInfo(outputDir.FullName);
                 });
 
                 Console.WriteLine();
@@ -164,17 +172,7 @@ class Program
 
                 await Task.Run(() =>
                 {
-                    Console.Write("  → Cities.json... ");
-                    mapper.ExportCities(outputDir.FullName);
-                    Console.ForegroundColor = ConsoleColor.Green;
-                    Console.WriteLine("✓");
-                    Console.ResetColor();
-
-                    Console.Write("  → Countries.json... ");
-                    mapper.ExportCountries(outputDir.FullName);
-                    Console.ForegroundColor = ConsoleColor.Green;
-                    Console.WriteLine("✓");
-                    Console.ResetColor();
+                    mapper.ExportInfo(outputDir.FullName);
                 });
 
                 Console.WriteLine();

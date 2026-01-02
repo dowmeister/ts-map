@@ -2,6 +2,10 @@
 let map;
 let tileMapInfo;
 let truckMarker = null;
+let liveMarkers = L.layerGroup(); // Layer group for live trucks
+let truckUpdateInterval = null;
+const TRUCK_UPDATE_INTERVAL = 3000; // 3 seconds
+const MIN_ZOOM_FOR_TRUCKS = 5;
 
 // Initialize the map
 async function initMap() {
@@ -82,6 +86,9 @@ async function initMap() {
 
     console.log("Map initialized successfully");
 
+    // Add live truck layer to map
+    liveMarkers.addTo(map);
+
     // Set initial view to zoom 6 centered at game coordinates 0,0
     const initialCenter = gameToMapCoords(0, 0);
     map.setView(initialCenter, 6);
@@ -90,6 +97,11 @@ async function initMap() {
     document.getElementById("truckX").value = "0";
     document.getElementById("truckZ").value = "0";
     updateTruckPosition();
+
+    // Start truck tracking on zoom changes
+    map.on("zoomend", checkAndStartTruckTracking);
+    map.on("moveend", checkAndStartTruckTracking);
+    checkAndStartTruckTracking();
   } catch (error) {
     console.error("Error loading map:", error);
     alert(
@@ -237,8 +249,12 @@ async function loadPOIData() {
             font-size: 14px;
             text-shadow: 1px 1px 2px black, -1px -1px 2px black;
             white-space: nowrap;
+            text-align: center;
+            transform: translate(-50%, -50%);
+            position: absolute;
           ">${city.LocalizedNames?.en_us || city.Name}</div>`,
           iconSize: [0, 0],
+          iconAnchor: [0, 0],
         }),
       }).addTo(map);
     });
@@ -307,3 +323,82 @@ window.addMarker = addMarker;
 window.addRoute = addRoute;
 window.updateTruckPosition = updateTruckPosition;
 window.centerOnTruck = centerOnTruck;
+
+// TruckersMP Live Tracking
+function checkAndStartTruckTracking() {
+  const currentZoom = map.getZoom();
+  if (currentZoom > MIN_ZOOM_FOR_TRUCKS && !truckUpdateInterval) {
+    console.log("Zoom > 7, starting truck tracking");
+    startTruckTracking();
+  } else if (currentZoom <= MIN_ZOOM_FOR_TRUCKS && truckUpdateInterval) {
+    console.log("Zoom <= 7, stopping truck tracking");
+    stopTruckTracking();
+  }
+}
+
+function startTruckTracking() {
+  // Initial load
+  updateLiveTrucks();
+
+  // Poll every 3 seconds
+  truckUpdateInterval = setInterval(updateLiveTrucks, TRUCK_UPDATE_INTERVAL);
+}
+
+function stopTruckTracking() {
+  if (truckUpdateInterval) {
+    clearInterval(truckUpdateInterval);
+    truckUpdateInterval = null;
+    // Clear trucks from map
+    liveMarkers.clearLayers();
+    console.log("Truck tracking stopped and cleared");
+  }
+}
+
+async function updateLiveTrucks() {
+  try {
+    const bounds = map.getBounds();
+
+    // Convert map bounds to game coordinates
+    const sw = bounds.getSouthWest();
+    const ne = bounds.getNorthEast();
+    const [x1, y1] = mapToGameCoords(sw);
+    const [x2, y2] = mapToGameCoords(ne);
+
+    // TruckersMP API - server 2 is Simulation 1
+    const url = `https://tracker.ets2map.com/v3/area?x1=${Math.floor(
+      x1
+    )}&y1=${Math.floor(y1)}&x2=${Math.ceil(x2)}&y2=${Math.ceil(y2)}&server=2`;
+
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.warn("Failed to fetch trucks:", response.status);
+      return;
+    }
+
+    const data = await response.json();
+
+    // Clear existing markers
+    liveMarkers.clearLayers();
+
+    // Add truck markers
+    data.Data.forEach((truck) => {
+      // TruckersMP API: truck.X = game X, truck.Y = game Z (north-south)
+      const latlng = gameToMapCoords(truck.X, truck.Y);
+
+      L.circleMarker(latlng, {
+        radius: 5,
+        fillColor: "#00ff00",
+        color: "#ffffff",
+        weight: 2,
+        opacity: 1,
+        fillOpacity: 1,
+      })
+        .addTo(liveMarkers)
+        .bindPopup(`<b>${truck.Name}</b><br>ID: ${truck.MpId}`);
+    });
+
+    console.log(`Updated ${data.Data.length} live trucks`);
+  } catch (error) {
+    console.error("Error updating trucks:", error);
+  }
+}

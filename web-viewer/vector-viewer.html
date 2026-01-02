@@ -53,6 +53,39 @@
             border-color: #999;
         }
 
+        #city-selector {
+            position: absolute;
+            top: 60px;
+            left: 10px;
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 10px 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            min-width: 200px;
+        }
+
+        #city-selector label {
+            margin-right: 10px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        #city-selector select {
+            padding: 5px 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+            font-size: 14px;
+            width: 100%;
+        }
+
+        #city-selector select:hover {
+            border-color: #999;
+        }
+
         #coord-info {
             position: absolute;
             bottom: 10px;
@@ -92,6 +125,12 @@
             <option value="ats">American Truck Simulator</option>
         </select>
     </div>
+    <div id="city-selector">
+        <label for="city-select">Go to City:</label>
+        <select id="city-select">
+            <option value="">Select a city...</option>
+        </select>
+    </div>
     <div id="coord-info">
         <div><span class="label">Zoom:</span> <span class="value" id="zoom-value">-</span></div>
         <div><span class="label">Map Bounds:</span></div>
@@ -104,6 +143,87 @@
         // Get game from querystring, default to 'ets2'
         const urlParams = new URLSearchParams(window.location.search);
         let currentGame = urlParams.get('game') || 'ets2';
+        let tileMapInfo = null;
+
+        // Load VectorTileMapInfo for coordinate conversion (used by vector tiles)
+        async function loadTileMapInfo() {
+            try {
+                const response = await fetch(`../map_data/${currentGame}/VectorTileMapInfo.json`);
+                tileMapInfo = await response.json();
+            } catch (error) {
+                console.error('Error loading VectorTileMapInfo:', error);
+            }
+        }
+
+        // Convert game coordinates to map coordinates (lon/lat)
+        // This MUST match the GeoJsonExporter.cs GameToLatLng() method exactly
+        function gameToMapCoords(gameX, gameZ) {
+            if (!tileMapInfo) return [0, 0];
+            
+            // Use mapper bounds from TileMapInfo.json (exported by CLI)
+            const minX = tileMapInfo.x1;
+            const maxX = tileMapInfo.x2;
+            const minZ = tileMapInfo.y1;
+            const maxZ = tileMapInfo.y2;
+            
+            const width = maxX - minX;
+            const height = maxZ - minZ;
+            
+            const normalizedX = (gameX - minX) / width;
+            const normalizedZ = (gameZ - minZ) / height;
+            const maxExtent = 70.0; // degrees
+            const aspectRatio = width / height;
+
+            let lonRange, latRange;
+            if (aspectRatio > 1.0) {
+                // Map is wider than tall
+                lonRange = maxExtent;
+                latRange = maxExtent / aspectRatio;
+            } else {
+                // Map is taller than wide
+                latRange = maxExtent;
+                lonRange = maxExtent * aspectRatio;
+            }
+
+            const lon = (normalizedX * lonRange) - (lonRange / 2.0);
+            const lat = (latRange / 2.0) - (normalizedZ * latRange);
+
+            return [lon, lat];
+        }
+
+        // Convert map coordinates to game coordinates
+        function mapToGameCoords(lon, lat) {
+            if (!tileMapInfo) return [0, 0];
+            
+            // Same bounds as gameToMapCoords
+            const minX = tileMapInfo.x1;
+            const maxX = tileMapInfo.x2;
+            const minZ = tileMapInfo.y1;
+            const maxZ = tileMapInfo.y2;
+
+            const width = maxX - minX;
+            const height = maxZ - minZ;
+
+            const maxExtent = 70.0;
+            const aspectRatio = width / height;
+
+            let lonRange, latRange;
+            if (aspectRatio > 1.0) {
+                lonRange = maxExtent;
+                latRange = maxExtent / aspectRatio;
+            } else {
+                latRange = maxExtent;
+                lonRange = maxExtent * aspectRatio;
+            }
+
+            const normalizedX = (lon + (lonRange / 2.0)) / lonRange;
+            const normalizedZ = ((latRange / 2.0) - lat) / latRange;
+
+            const gameX = minX + normalizedX * width;
+            const gameZ = minZ + normalizedZ * height;
+
+            return [gameX, gameZ];
+        }
 
         // Update select dropdown to match current game
         document.getElementById('game-select').value = currentGame;
@@ -116,20 +236,42 @@
             window.location.href = url.toString();
         });
 
-        // Load overlay images dynamically
-        async function loadOverlayImages(map) {
+        // Load cities and populate dropdown
+        async function loadCities() {
             try {
-                const response = await fetch(`../map_data/${currentGame}/overlay_images/`);
-                // For now, we'll use a simpler approach - load common company logos
-                // The actual implementation would need a sprite sheet or individual image loading
+                const response = await fetch(`../map_data/${currentGame}/Cities.json`);
+                if (!response.ok) {
+                    console.warn('Could not load cities');
+                    return;
+                }
+                const cities = await response.json();
 
-                // For services (non-company overlays), use emoji as fallback
-                return true;
+                const citySelect = document.getElementById('city-select');
+                citySelect.innerHTML = '<option value="">Select a city...</option>';
+
+                // Filter out invalid cities and sort alphabetically by localized name
+                const validCities = cities.filter(city => city && city.Name && city.X !== undefined && city.Y !== undefined);
+                validCities.sort((a, b) => (a.Name || '').localeCompare(b.Name || ''));
+
+                validCities.forEach(city => {
+                    const option = document.createElement('option');
+                    option.value = JSON.stringify({ x: city.X, z: city.Y });
+                    option.textContent = city.Name;
+                    citySelect.appendChild(option);
+                });
             } catch (error) {
-                console.warn('Could not load overlay images:', error);
-                return false;
+                console.error('Error loading cities:', error);
             }
         }
+
+        // Handle city selection
+        document.getElementById('city-select').addEventListener('change', (e) => {
+            if (!e.target.value) return;
+
+            const coords = JSON.parse(e.target.value);
+            const [lon, lat] = gameToMapCoords(coords.x, coords.z);
+            map.flyTo({ center: [lon, lat], zoom: 8 });
+        });
 
         const map = new maplibregl.Map({
             container: 'map',
@@ -143,6 +285,13 @@
                         tiles: [`http://localhost:8080/data/${currentGame}-vector/{z}/{x}/{y}.pbf`],
                         minzoom: 4,
                         maxzoom: 8
+                    },
+                    'trucks': {
+                        type: 'geojson',
+                        data: {
+                            type: 'FeatureCollection',
+                            features: []
+                        }
                     }
                 },
                 layers: [
@@ -296,7 +445,9 @@
                         source: 'map',
                         'source-layer': 'cities',
                         layout: {
-                            'text-field': ['get', 'localized_name'],
+                            'text-field':
+                                ['get', 'localized_name'],
+
                             'text-size': [
                                 'interpolate',
                                 ['linear'],
@@ -308,7 +459,7 @@
                             ],
                             'text-anchor': 'top',
                             'text-offset': [0, 0.8],
-                            'text-allow-overlap': false,
+                            'text-allow-overlap': true,
                             'text-ignore-placement': false
                         },
                         paint: {
@@ -316,6 +467,18 @@
                             'text-halo-color': '#000000',
                             'text-halo-width': 2.5
                         }
+                    },
+                    {
+                        id: 'trucks',
+                        type: 'circle',
+                        source: 'trucks',
+                        paint: {
+                            'circle-radius': 5,
+                            'circle-color': '#00ff00',
+                            'circle-stroke-width': 2,
+                            'circle-stroke-color': '#ffffff'
+                        },
+                        minzoom: 7
                     }
                 ]
             },
@@ -333,11 +496,119 @@
         map.dragRotate.enable();
         map.touchZoomRotate.enableRotation();
 
-        // Load overlay images after map loads
-        map.on('load', () => {
-            console.log('Map loaded successfully!');
-            updateCoordinateInfo();
+        // Add error handler
+        map.on('error', (e) => {
+            console.error('Map error:', e);
         });
+
+        function initializeTrucks() {
+            updateCoordinateInfo();
+
+            // Start polling for trucks if on ETS2 and zoom > 7
+            if (currentGame === 'ets2') {
+                checkAndStartTruckTracking();
+            }
+        }
+
+        map.once('load', async () => {
+            await loadTileMapInfo();
+            initializeTrucks();
+            await loadCities();
+        });
+
+        // TruckersMP tracking
+        let truckUpdateInterval = null;
+        const TRUCK_UPDATE_INTERVAL = 3000; // 3 seconds
+        const MIN_ZOOM_FOR_TRUCKS = 7;
+
+        function checkAndStartTruckTracking() {
+            const currentZoom = map.getZoom();
+            if (currentZoom > MIN_ZOOM_FOR_TRUCKS && !truckUpdateInterval) {
+                startTruckTracking();
+            } else if (currentZoom <= MIN_ZOOM_FOR_TRUCKS && truckUpdateInterval) {
+                stopTruckTracking();
+            }
+        }
+
+        // Listen to zoom changes
+        map.on('zoom', () => {
+            if (currentGame === 'ets2') {
+                checkAndStartTruckTracking();
+            }
+        });
+
+        function startTruckTracking() {
+            // Initial load
+            updateTrucks();
+
+            // Poll every 3 seconds
+            truckUpdateInterval = setInterval(updateTrucks, TRUCK_UPDATE_INTERVAL);
+        }
+
+        function stopTruckTracking() {
+            if (truckUpdateInterval) {
+                clearInterval(truckUpdateInterval);
+                truckUpdateInterval = null;
+                // Clear trucks from map
+                const source = map.getSource('trucks');
+                if (source) {
+                    source.setData({
+                        type: 'FeatureCollection',
+                        features: []
+                    });
+                }
+            }
+        }
+
+        async function updateTrucks() {
+            try {
+                const bounds = map.getBounds();
+
+                // Convert map bounds to game coordinates
+                const [x1, y1] = mapToGameCoords(bounds.getWest(), bounds.getSouth());
+                const [x2, y2] = mapToGameCoords(bounds.getEast(), bounds.getNorth());
+
+                // TruckersMP API - server 2 is Simulation 1
+                const url = `https://tracker.ets2map.com/v3/area?x1=${Math.floor(x1)}&y1=${Math.floor(y1)}&x2=${Math.ceil(x2)}&y2=${Math.ceil(y2)}&server=2`;
+
+                const response = await fetch(url);
+                if (!response.ok) return;
+
+                const data = await response.json();
+
+                // Convert truck data to GeoJSON
+                const features = data.Data.map(truck => {
+                    // Convert game coordinates to map coordinates
+                    // TruckersMP API: truck.X = game X, truck.Y = game Z (north-south)
+                    const [lon, lat] = gameToMapCoords(truck.X, truck.Y);
+
+                    return {
+                        type: 'Feature',
+                        geometry: {
+                            type: 'Point',
+                            coordinates: [lon, lat]
+                        },
+                        properties: {
+                            name: truck.Name,
+                            mpId: truck.MpId,
+                            playerId: truck.PlayerId,
+                            vtcId: truck.VtcId
+                        }
+                    };
+                });
+
+                // Update the trucks source
+                const source = map.getSource('trucks');
+                if (source) {
+                    source.setData({
+                        type: 'FeatureCollection',
+                        features: features
+                    });
+                }
+            } catch (error) {
+                console.error('Error updating trucks:', error);
+            }
+        }
 
         // Update coordinate info panel
         function updateCoordinateInfo() {
@@ -347,16 +618,11 @@
             // Map coordinates (lat/lng)
             const mapBounds = `SW: [${bounds.getWest().toFixed(4)}, ${bounds.getSouth().toFixed(4)}] NE: [${bounds.getEast().toFixed(4)}, ${bounds.getNorth().toFixed(4)}]`;
 
-            // Game coordinates conversion (approximate - adjust based on your game's coordinate system)
-            // Typically game coords are in meters, with Z axis as north-south
-            // This is a simplified conversion - you may need to adjust based on your actual map projection
-            const gameScale = 100; // Adjust this based on your game's scale
-            const gameSW_X = (bounds.getWest() * gameScale).toFixed(0);
-            const gameSW_Z = (bounds.getSouth() * gameScale).toFixed(0);
-            const gameNE_X = (bounds.getEast() * gameScale).toFixed(0);
-            const gameNE_Z = (bounds.getNorth() * gameScale).toFixed(0);
+            // Game coordinates conversion using proper formula
+            const [gameSW_X, gameSW_Z] = mapToGameCoords(bounds.getWest(), bounds.getSouth());
+            const [gameNE_X, gameNE_Z] = mapToGameCoords(bounds.getEast(), bounds.getNorth());
 
-            const gameCoords = `SW: [X:${gameSW_X}, Z:${gameSW_Z}] NE: [X:${gameNE_X}, Z:${gameNE_Z}]`;
+            const gameCoords = `SW: [X:${gameSW_X.toFixed(0)}, Z:${gameSW_Z.toFixed(0)}] NE: [X:${gameNE_X.toFixed(0)}, Z:${gameNE_Z.toFixed(0)}]`;
 
             document.getElementById('zoom-value').textContent = zoom;
             document.getElementById('map-bounds').textContent = mapBounds;
@@ -370,7 +636,6 @@
         // Dynamically load overlay images when MapLibre requests them
         map.on('styleimagemissing', (e) => {
             const imageId = e.id;
-            console.log('Loading image:', imageId);
 
             // Load the image from the exported overlay_images directory
             const img = new Image();
@@ -379,12 +644,10 @@
             img.onload = () => {
                 if (!map.hasImage(imageId)) {
                     map.addImage(imageId, img);
-                    console.log('Image loaded:', imageId);
                 }
             };
 
             img.onerror = () => {
-                console.warn('Failed to load image:', imageId);
                 // Create a fallback placeholder image
                 const size = 32;
                 const canvas = document.createElement('canvas');
@@ -409,9 +672,9 @@
         });
 
         map.dragPan.enable();
-        map.dragRotate.enable(); // rotazione con Ctrl+drag o touch a 2 dita
+        map.dragRotate.enable();
         map.touchZoomRotate.enable();
-        map.touchPitch.enable(); // pitch con touch a 2 dita
+        map.touchPitch.enable();
     </script>
 </body>
 

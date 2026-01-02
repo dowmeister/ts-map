@@ -331,11 +331,6 @@ namespace TsMap.Canvas
             {
                 _mapper.ExportInfo(exportPath);
 
-                // Export GeoJSON files for vector tiles
-                var geoJsonExporter = new GeoJsonExporter(_mapper);
-                var geoJsonPath = Path.Combine(exportPath, "geojson");
-                geoJsonExporter.ExportAll(geoJsonPath);
-
                 MessageBox.Show("Map Data and GeoJSON exported", "Map Info Export",
                         MessageBoxButtons.OK, MessageBoxIcon.Information);
             };

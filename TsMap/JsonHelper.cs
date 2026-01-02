@@ -27,6 +27,23 @@ namespace TsMap
             File.WriteAllText(Path.Combine(path, "TileMapInfo.json"), tileMapInfo.ToString(Formatting.Indented));
         }
 
+        public static void SaveVectorTileMapInfo(string path, float minX, float maxX, float minZ, float maxZ)
+        {
+            var vectorTileMapInfo = new JObject
+            {
+                ["x1"] = minX,
+                ["x2"] = maxX,
+                ["y1"] = minZ,
+                ["y2"] = maxZ,
+                ["minZoom"] = 4,
+                ["maxZoom"] = 13,
+                ["tileSize"] = 256
+            };
+
+            Directory.CreateDirectory(path);
+            File.WriteAllText(Path.Combine(path, "VectorTileMapInfo.json"), vectorTileMapInfo.ToString(Formatting.Indented));
+        }
+
         public static void SaveSettings(Settings settings)
         {
             Directory.CreateDirectory(_settingsPath);
