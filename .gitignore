@@ -270,3 +270,5 @@ __pycache__/
 /web-viewer/map_data/**/*
 
 .env
+rclone.conf
+upload-overlay-images.sh

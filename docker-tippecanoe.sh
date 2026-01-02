@@ -33,7 +33,7 @@ docker run --rm \
     tsmap-tippecanoe \
     bash -c "tippecanoe \
     -o \"/data/${GAME}.mbtiles\" \
-    -z8 -Z0 \
+    -z8 -Z3 \
     --drop-densest-as-needed \
     --force \
     -L roads:/data/geojson/roads.geojson \

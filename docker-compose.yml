@@ -22,7 +22,6 @@ services:
     volumes:
       - ./mbtiles:/data
     command: ["--port", "8080", "--verbose"]
-    restart: unless-stopped
 
   # Web viewer server
   webserver:
@@ -33,4 +32,3 @@ services:
     volumes:
       - ./web-viewer:/usr/share/nginx/html
       - ./map_data:/usr/share/nginx/html/map_data:ro
-    restart: unless-stopped

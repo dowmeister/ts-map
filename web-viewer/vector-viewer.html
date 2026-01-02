@@ -141,7 +141,7 @@
                     'map': {
                         type: 'vector',
                         tiles: [`http://localhost:8080/data/${currentGame}-vector/{z}/{x}/{y}.pbf`],
-                        minzoom: 0,
+                        minzoom: 4,
                         maxzoom: 8
                     }
                 },
@@ -179,10 +179,9 @@
                         source: 'map',
                         'source-layer': 'roads',
                         paint: {
-                            'fill-color': '#ff9900',
+                            'fill-color': '#FFC84C',
                             'fill-opacity': 1.0,
-                            'fill-antialias': false,
-                            'fill-outline-color': '#ff9900'
+                            'fill-antialias': true,
                         },
                     },
                     {
@@ -191,10 +190,9 @@
                         source: 'map',
                         'source-layer': 'prefab_roads',
                         paint: {
-                            'fill-color': '#ff9900',
+                            'fill-color': '#FFC84C',
                             'fill-opacity': 1.0,
-                            'fill-antialias': false,  // Disable antialiasing to prevent seams
-                            'fill-outline-color': '#ff9900'  // Match outline to fill - no visible boundaries
+                            'fill-antialias': true,
                         }
                     },
                     {
@@ -225,7 +223,7 @@
                             'fill-extrusion-color': ['get', 'color'],
                             'fill-extrusion-height': 600,
                             'fill-extrusion-base': 0,
-                            'fill-extrusion-opacity': 1
+                            'fill-extrusion-opacity': 1,
                         }
                     },
                     {
@@ -237,7 +235,7 @@
                             'fill-extrusion-color': ['get', 'color'],
                             'fill-extrusion-height': 600,
                             'fill-extrusion-base': 0,
-                            'fill-extrusion-opacity': 1
+                            'fill-extrusion-opacity': 1,
                         }
                     },
                     {
@@ -323,6 +321,7 @@
             },
             center: [0, 0],  // Map is centered at origin with new coordinate system
             zoom: 4,
+            minZoom: 4,
             pitch: 20,  // Isometric view to show 3D building elevation
             bearing: 0,
             renderWorldCopies: false  // Don't repeat the map - this is a fixed game map, not the earth

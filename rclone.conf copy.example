@@ -1,0 +1,28 @@
+# Example rclone configuration for Cloudflare R2
+# Copy this file to rclone.conf and fill in your credentials
+#
+# To get your R2 credentials:
+# 1. Go to Cloudflare Dashboard > R2
+# 2. Click "Manage R2 API Tokens"
+# 3. Create an API token with read/write permissions
+# 4. Copy the Access Key ID and Secret Access Key
+# 5. Get your account ID from the R2 overview page
+
+[r2]
+type = s3
+provider = Cloudflare
+access_key_id = YOUR_ACCESS_KEY_ID
+secret_access_key = YOUR_SECRET_ACCESS_KEY
+endpoint = https://YOUR_ACCOUNT_ID.r2.cloudflarestorage.com
+acl = private
+no_check_bucket = true
+
+# Optional: Configure a second remote
+# [r2-backup]
+# type = s3
+# provider = Cloudflare
+# access_key_id = YOUR_BACKUP_KEY_ID
+# secret_access_key = YOUR_BACKUP_SECRET_KEY
+# endpoint = https://YOUR_ACCOUNT_ID.r2.cloudflarestorage.com
+# acl = private
+# no_check_bucket = true
