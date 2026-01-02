@@ -18,7 +18,7 @@ services:
     image: maptiler/tileserver-gl-light:latest
     container_name: tsmap-tileserver
     ports:
-      - "8080:8080"
+      - "${TILESERVER_PORT:-8080}:8080"
     volumes:
       - ./mbtiles:/data
     command: ["--port", "8080", "--verbose"]
@@ -29,7 +29,7 @@ services:
     image: nginx:alpine
     container_name: tsmap-webserver
     ports:
-      - "5500:80"
+      - "${WEBSERVER_PORT:-5500}:80"
     volumes:
       - ./web-viewer:/usr/share/nginx/html
       - ./map_data:/usr/share/nginx/html/map_data:ro
