@@ -260,7 +260,10 @@ paket-files/
 __pycache__/
 *.pyc
 
+# Ignore all map_data contents except .gitkeep files
 /map_data/**/*
+!/map_data/**/.gitkeep
+
 /mbtiles/*.mbtiles
 /mbtiles/*.mbtiles-journal
 
