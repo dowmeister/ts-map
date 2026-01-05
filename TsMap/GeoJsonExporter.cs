@@ -128,7 +128,7 @@ namespace TsMap
 
             foreach (var road in _mapper.Roads)
             {
-                if (road.Hidden) continue;
+                if (road.Hidden || !road.Valid) continue;
 
                 var startNode = road.GetStartNode();
                 var endNode = road.GetEndNode();

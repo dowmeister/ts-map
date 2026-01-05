@@ -19,7 +19,7 @@ echo.
 echo.
 echo [2/3] Exporting GeoJSON from game data...
 echo ======================================
-.\TsMap.Cli\bin\Release\net8.0\TsMap.Cli.exe -g "%GAME_PATH%" -o "%OUTPUT_DIR%" -f geojson
+.\TsMap.Cli\bin\Release\TsMap.Cli.exe -g "%GAME_PATH%" -o "%OUTPUT_DIR%" -f geojson
 if %ERRORLEVEL% neq 0 (
     echo ERROR: GeoJSON export failed
     exit /b 1

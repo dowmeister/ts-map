@@ -78,13 +78,13 @@ The CLI uses the following arguments:
 #### For ETS2:
 
 ```powershell
-.\TsMap.Cli\bin\Release\net8.0\TsMap.Cli.exe -g "C:\Program Files (x86)\Steam\steamapps\common\Euro Truck Simulator 2" -o "map_data\ets2" -f geojson
+.\TsMap.Cli\bin\Release\TsMap.Cli.exe -g "C:\Program Files (x86)\Steam\steamapps\common\Euro Truck Simulator 2" -o "map_data\ets2" -f geojson
 ```
 
 #### For ATS:
 
 ```powershell
-.\TsMap.Cli\bin\Release\net8.0\TsMap.Cli.exe -g "C:\Program Files (x86)\Steam\steamapps\common\American Truck Simulator" -o "map_data\ats" -f geojson
+.\TsMap.Cli\bin\Release\TsMap.Cli.exe -g "C:\Program Files (x86)\Steam\steamapps\common\American Truck Simulator" -o "map_data\ats" -f geojson
 ```
 
 **Note:** Adjust the game paths to match your installation directory.
@@ -100,7 +100,7 @@ Edit `generate-geojson.bat` to set your game path, then run:
 Example script content:
 
 ```batch
-.\TsMap.Cli\bin\Release\net8.0\TsMap.Cli.exe -g "C:\Program Files (x86)\Steam\steamapps\common\Euro Truck Simulator 2" -o "map_data\ets2" -f geojson
+.\TsMap.Cli\bin\Release\TsMap.Cli.exe -g "C:\Program Files (x86)\Steam\steamapps\common\Euro Truck Simulator 2" -o "map_data\ets2" -f geojson
 ```
 
 ### Generated Files

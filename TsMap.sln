@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TsMap.Canvas", "TsMap.Canva
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TsMap", "TsMap\TsMap.csproj", "{E458D6D9-6A9C-4214-92A2-46E5678EDDDA}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TsMap.Cli", "TsMap.Cli\TsMap.Cli.csproj", "{02670BF7-EF13-0B88-BC8C-C5B489F5D240}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -21,6 +23,10 @@ Global
 		{E458D6D9-6A9C-4214-92A2-46E5678EDDDA}.Debug|x64.Build.0 = Debug|x64
 		{E458D6D9-6A9C-4214-92A2-46E5678EDDDA}.Release|x64.ActiveCfg = Release|x64
 		{E458D6D9-6A9C-4214-92A2-46E5678EDDDA}.Release|x64.Build.0 = Release|x64
+		{02670BF7-EF13-0B88-BC8C-C5B489F5D240}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{02670BF7-EF13-0B88-BC8C-C5B489F5D240}.Debug|x64.Build.0 = Debug|Any CPU
+		{02670BF7-EF13-0B88-BC8C-C5B489F5D240}.Release|x64.ActiveCfg = Release|Any CPU
+		{02670BF7-EF13-0B88-BC8C-C5B489F5D240}.Release|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

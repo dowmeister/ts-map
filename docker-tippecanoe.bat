@@ -5,11 +5,6 @@ REM Usage: docker-tippecanoe.bat [ets2|ats]
 set GAME=%1
 if "%GAME%"=="" set GAME=ets2
 
-if not "%GAME%"=="ets2" if not "%GAME%"=="ats" (
-    echo ERROR: Invalid game parameter. Use 'ets2' or 'ats'
-    exit /b 1
-)
-
 echo =======================================
 echo Generating Vector Tiles with Tippecanoe (Docker)
 echo Game: %GAME%
