@@ -1,0 +1,32 @@
+.city-selector {
+  position: absolute;
+  top: 60px;
+  left: 10px;
+  z-index: 1000;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 10px 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  min-width: 200px;
+}
+
+.city-selector label {
+  margin-right: 10px;
+  font-weight: 600;
+  color: #333;
+}
+
+.city-selector select {
+  padding: 5px 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: white;
+  cursor: pointer;
+  font-size: 14px;
+  width: 100%;
+}
+
+.city-selector select:hover {
+  border-color: #999;
+}

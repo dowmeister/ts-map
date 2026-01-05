@@ -272,3 +272,4 @@ __pycache__/
 .env
 rclone.conf
 upload-overlay-images.sh
+web-viewer/react-app/public/map_data

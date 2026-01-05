@@ -1,0 +1,28 @@
+.coord-info {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.85);
+  color: #ffffff;
+  padding: 12px 15px;
+  border-radius: 8px;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  max-width: 400px;
+}
+
+.coord-info .label {
+  color: #00d4ff;
+  font-weight: bold;
+}
+
+.coord-info .value {
+  color: #ffffff;
+}
+
+.coord-info div {
+  margin: 2px 0;
+}
