@@ -6,7 +6,8 @@ export function useCities(game) {
   useEffect(() => {
     async function loadCities() {
       try {
-        const response = await fetch(`/map_data/${game}/Cities.json`)
+        const baseUrl = import.meta.env.VITE_OVERLAY_IMAGES_BASE_URL || '/map_data'
+        const response = await fetch(`${baseUrl}/${game}/Cities.json`)
         if (!response.ok) return
         
         const data = await response.json()
