@@ -1,6 +1,6 @@
 # TsMap.Cli - Command-Line Map Data Exporter
 
-A .NET 6 command-line tool for exporting Euro Truck Simulator 2 and American Truck Simulator map data.
+A .NET Framework 4.7.2 command-line tool for exporting Euro Truck Simulator 2 and American Truck Simulator map data.
 
 ## Features
 
@@ -8,12 +8,12 @@ A .NET 6 command-line tool for exporting Euro Truck Simulator 2 and American Tru
 - 📊 Export GeoJSON files (for vector tiles)
 - 📄 Export JSON data files (cities, countries)
 - 🎯 No GUI required
-- ⚡ Modern .NET 6 with async/await
+- ⚡ Async/await for efficient processing
 
 ## Prerequisites
 
-- .NET 6 SDK or later
-- Windows (references TsMap.dll which is .NET Framework)
+- .NET Framework 4.7.2 or later (included in Windows 10 1803+)
+- Windows
 - ETS2 or ATS game installed
 
 ## Building
@@ -22,10 +22,13 @@ From the root `ts-map` directory:
 
 ```powershell
 # Build TsMap library first
-msbuild TsMap\TsMap.csproj /p:Configuration=Release
+dotnet build TsMap\TsMap.csproj -c Release
 
 # Build CLI
 dotnet build TsMap.Cli\TsMap.Cli.csproj -c Release
+
+# Or use the build script
+.\build.bat
 ```
 
 ## Usage
@@ -34,35 +37,117 @@ dotnet build TsMap.Cli\TsMap.Cli.csproj -c Release
 
 ```powershell
 # Export GeoJSON only
-dotnet run --project TsMap.Cli -- --game "C:\SteamLibrary\steamapps\common\Euro Truck Simulator 2" --output .\map_data\ets2 --format geojson
+.\TsMap.Cli\bin\Release\TsMap.Cli.exe --game "C:\SteamLibrary\steamapps\common\Euro Truck Simulator 2" --output .\map_data\ets2 --format geojson
 
 # Export JSON data only
-dotnet run --project TsMap.Cli -- --game "C:\SteamLibrary\steamapps\common\Euro Truck Simulator 2" --output .\map_data\ets2 --format json
+.\TsMap.Cli\bin\Release\TsMap.Cli.exe --game "C:\SteamLibrary\steamapps\common\Euro Truck Simulator 2" --output .\map_data\ets2 --format json
 
 # Export everything
-dotnet run --project TsMap.Cli -- --game "C:\SteamLibrary\steamapps\common\Euro Truck Simulator 2" --output .\map_data\ets2 --format all
+.\TsMap.Cli\bin\Release\TsMap.Cli.exe --game "C:\SteamLibrary\steamapps\common\Euro Truck Simulator 2" --output .\map_data\ets2 --format all
 ```
 
 ### After Building
 
 ```powershell
 # Run the compiled executable
-.\TsMap.Cli\bin\Release\net6.0\TsMap.Cli.exe --game "C:\SteamLibrary\steamapps\common\Euro Truck Simulator 2" -o .\map_data\ets2
-
-# Or publish as single file
-dotnet publish TsMap.Cli -c Release -r win-x64 --self-contained false /p:PublishSingleFile=true
-
-# Then run
-.\TsMap.Cli\bin\Release\net6.0\win-x64\publish\TsMap.Cli.exe -g "C:\SteamLibrary\steamapps\common\Euro Truck Simulator 2" -o .\map_data\ets2
+.\TsMap.Cli\bin\Release\TsMap.Cli.exe --game "C:\SteamLibrary\steamapps\common\Euro Truck Simulator 2" -o .\map_data\ets2
 ```
 
 ## Command-Line Options
 
-| Option     | Alias | Description                                                 | Required |
-| ---------- | ----- | ----------------------------------------------------------- | -------- |
-| `--game`   | `-g`  | Path to ETS2/ATS game directory                             | Yes      |
-| `--output` | `-o`  | Output directory for exported data                          | Yes      |
-| `--format` | `-f`  | Export format: `geojson`, `json`, or `all` (default: `all`) | No       |
+| Option        | Alias | Description                                                 | Required |
+| ------------- | ----- | ----------------------------------------------------------- | -------- |
+| `--game`      | `-g`  | Path to ETS2/ATS game directory                             | Yes      |
+| `--output`    | `-o`  | Output directory for exported data                          | Yes      |
+| `--format`    | `-f`  | Export format: `geojson`, `json`, or `all` (default: `all`) | No       |
+| `--mods-dir`  | `-m`  | Path to directory containing mod files                      | No       |
+| `--mods-list` | `-l`  | Path to JSON file listing mods to load                      | No       |
+
+## Mod Support
+
+The CLI supports loading game mods (such as ProMods, RusMap, etc.) to export modded map data.
+
+### Setting Up Mods
+
+1. **Create a mods configuration file** (e.g., `mods.json`):
+
+```json
+{
+  "mods": [
+    "promods-def-v268.scs",
+    "promods-map-v268.scs",
+    "promods-assets-v268.scs",
+    "promods-media-v268.scs"
+  ]
+}
+```
+
+See [mods.example.json](mods.example.json) for a complete example.
+
+2. **Place your mod files** in a directory (e.g., `C:\mods\`):
+
+```
+C:\mods\
+  promods-def-v268.scs
+  promods-map-v268.scs
+  promods-model1-v268.scs
+  my-custom-mod.zip
+```
+
+3. **Run the CLI with mod parameters**:
+
+```powershell
+TsMap.Cli.exe -g "C:\SteamLibrary\steamapps\common\Euro Truck Simulator 2" -o .\map_data\ets2_promods -m "C:\mods" -l .\mods.json
+```
+
+### Mod Configuration Format
+
+The JSON configuration file is a simple array of mod filenames:
+
+- Each string is the filename of a mod file that must exist in the mods directory
+- Mods are loaded in the order listed (important for load priority)
+- To disable a mod, simply remove it from the list or comment it out
+
+**Important:** Mods are loaded in the order specified in the JSON file. The game loads mods with highest priority last, so list your mods in load order (base mods first, overrides last).
+
+### Examples with Mods
+
+#### ProMods Export
+
+```powershell
+# Create mods config
+@"
+{
+  \"mods\": [
+    \"promods-def-v268.scs\",
+    \"promods-map-v268.scs\",
+    \"promods-assets-v268.scs\",
+    \"promods-media-v268.scs\"
+  ]
+}
+"@ | Out-File -Encoding UTF8 promods.json
+
+# Export with ProMods
+TsMap.Cli.exe -g "C:\SteamLibrary\steamapps\common\Euro Truck Simulator 2" -o .\map_data\ets2_promods -m "C:\mods\promods" -l .\promods.json
+```
+
+#### Multiple Map Mods
+
+```powershell
+# Combine ProMods and RusMap
+@"
+{
+  \"mods\": [
+    \"promods-def-v268.scs\",
+    \"promods-map-v268.scs\",
+    \"rusmap-def-v242.scs\",
+    \"rusmap-map-v242.scs\"
+  ]
+}
+"@ | Out-File -Encoding UTF8 combined-mods.json
+
+TsMap.Cli.exe -g "C:\Steam\Euro Truck Simulator 2" -o .\map_data\ets2_combined -m "C:\mods" -l .\combined-mods.json
+```
 
 ## Output Structure
 

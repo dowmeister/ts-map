@@ -1,0 +1,16 @@
+{
+  "mods": [
+    "promods-tgs-defmap-v150.scs",
+    "promods-tgs-assets-v150.scs",
+    "promods-me-defmap-v277.scs",
+    "promods-me-assets-v277.scs",
+    "promods-eu-model3-v280.scs",
+    "promods-eu-model2-v280.scs",
+    "promods-eu-model1-v280.scs",
+    "promods-eu-media-v280.scs",
+    "promods-eu-map-v280.scs",
+    "promods-eu-dlcsupport-v280.zip",
+    "promods-eu-def-v280.scs",
+    "promods-eu-assets-v280.scs"
+  ]
+}

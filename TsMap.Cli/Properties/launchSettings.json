@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "TsMap.Cli": {
+      "commandName": "Project",
+      "commandLineArgs": "-g \"E:\\SteamLibrary\\steamapps\\common\\Euro Truck Simulator 2\" -o \"E:\\Progetti\\ts-map\\map_data\\promods\" -m \"C:\\Users\\Francesco\\Documents\\Euro Truck Simulator 2\\mod\" -l \"E:\\Progetti\\ts-map\\mods\\promods.json\" -f all"
+    }
+  }
+}

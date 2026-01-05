@@ -400,8 +400,15 @@ namespace TsMap
                 if (mod.Load) UberFileSystem.Instance.AddSourceFile(mod.ModPath);
             }
 
-            UberFileSystem.Instance.AddSourceFile(Path.Combine(Environment.CurrentDirectory,
-                "custom_resources.zip"));
+            var customResourcesPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "custom_resources.zip");
+            if (File.Exists(customResourcesPath))
+            {
+                UberFileSystem.Instance.AddSourceFile(customResourcesPath);
+            }
+            else
+            {
+                Logger.Instance.Warning($"custom_resources.zip not found at {customResourcesPath}");
+            }
 
             Logger.Instance.Info($"Loaded all .scs files in {(DateTime.Now.Ticks - startTime) / TimeSpan.TicksPerMillisecond}ms");
 

@@ -123,6 +123,7 @@
         <select id="game-select">
             <option value="ets2">Euro Truck Simulator 2</option>
             <option value="ats">American Truck Simulator</option>
+            <option value="promods">Promods</option>
         </select>
     </div>
     <div id="city-selector">
@@ -370,7 +371,7 @@
                         'source-layer': 'prefab_buildings',
                         paint: {
                             'fill-extrusion-color': ['get', 'color'],
-                            'fill-extrusion-height': 600,
+                            'fill-extrusion-height': 400,
                             'fill-extrusion-base': 0,
                             'fill-extrusion-opacity': 1,
                         }
@@ -382,21 +383,9 @@
                         'source-layer': 'map_buildings',
                         paint: {
                             'fill-extrusion-color': ['get', 'color'],
-                            'fill-extrusion-height': 600,
+                            'fill-extrusion-height': 400,
                             'fill-extrusion-base': 0,
                             'fill-extrusion-opacity': 1,
-                        }
-                    },
-                    {
-                        id: 'companies',
-                        type: 'circle',
-                        source: 'map',
-                        'source-layer': 'companies',
-                        paint: {
-                            'circle-radius': 3,
-                            'circle-color': '#ff6600',
-                            'circle-stroke-width': 1,
-                            'circle-stroke-color': '#ffffff'
                         }
                     },
                     {
@@ -410,33 +399,16 @@
                                 'interpolate',
                                 ['linear'],
                                 ['zoom'],
-                                4, 0.3,   // At zoom 4, size 0.3
-                                6, 0.5,   // At zoom 6, size 0.5
-                                8, 0.8,   // At zoom 8, size 0.8
-                                10, 1.2   // At zoom 10, size 1.2
+                                4, 0.08,   // At zoom 4, very tiny
+                                5, 0.10,   // At zoom 5, very tiny
+                                6, 0.12,   // At zoom 6, very tiny
+                                7, 0.15,   // At zoom 7, still very tiny
+                                8, 0.4,   // At zoom 8, small
+                                10, 0.75,   // At zoom 10, moderate
+                                11, 1.0    // At zoom 11, full size
                             ],
                             'icon-allow-overlap': true,
                             'icon-ignore-placement': true
-                        }
-                    },
-                    {
-                        id: 'city-pins',
-                        type: 'circle',
-                        source: 'map',
-                        'source-layer': 'cities',
-                        paint: {
-                            'circle-radius': [
-                                'interpolate',
-                                ['linear'],
-                                ['zoom'],
-                                4, 4,     // At zoom 4, radius 4px
-                                6, 6,     // At zoom 6, radius 6px
-                                8, 8,     // At zoom 8, radius 8px
-                                10, 10    // At zoom 10, radius 10px
-                            ],
-                            'circle-color': '#ff3333',
-                            'circle-stroke-width': 2,
-                            'circle-stroke-color': '#ffffff'
                         }
                     },
                     {
@@ -444,6 +416,7 @@
                         type: 'symbol',
                         source: 'map',
                         'source-layer': 'cities',
+                        minzoom: 5,
                         layout: {
                             'text-field':
                                 ['get', 'localized_name'],
@@ -452,7 +425,7 @@
                                 'interpolate',
                                 ['linear'],
                                 ['zoom'],
-                                4, 11,    // At zoom 4, size 11px
+                                5, 11,    // At zoom 5, size 11px
                                 6, 13,    // At zoom 6, size 13px
                                 8, 16,    // At zoom 8, size 16px
                                 10, 20    // At zoom 10, size 20px
@@ -504,10 +477,8 @@
         function initializeTrucks() {
             updateCoordinateInfo();
 
-            // Start polling for trucks if on ETS2 and zoom > 7
-            if (currentGame === 'ets2') {
-                checkAndStartTruckTracking();
-            }
+            // Start polling for trucks if zoom > 7
+            checkAndStartTruckTracking();
         }
 
         map.once('load', async () => {
@@ -532,9 +503,7 @@
 
         // Listen to zoom changes
         map.on('zoom', () => {
-            if (currentGame === 'ets2') {
-                checkAndStartTruckTracking();
-            }
+            checkAndStartTruckTracking();
         });
 
         function startTruckTracking() {
@@ -568,8 +537,18 @@
                 const [x1, y1] = mapToGameCoords(bounds.getWest(), bounds.getSouth());
                 const [x2, y2] = mapToGameCoords(bounds.getEast(), bounds.getNorth());
 
-                // TruckersMP API - server 2 is Simulation 1
-                const url = `https://tracker.ets2map.com/v3/area?x1=${Math.floor(x1)}&y1=${Math.floor(y1)}&x2=${Math.ceil(x2)}&y2=${Math.ceil(y2)}&server=2`;
+                // TruckersMP API - select server based on game
+                // ETS2: server 2 (Simulation 1), ATS: server 10, ProMods: server 50
+                let serverId;
+                if (currentGame === 'ats') {
+                    serverId = 10;
+                } else if (currentGame === 'promods') {
+                    serverId = 50;
+                } else {
+                    serverId = 2; // ETS2 default
+                }
+
+                const url = `https://tracker.ets2map.com/v3/area?x1=${Math.floor(x1)}&y1=${Math.floor(y1)}&x2=${Math.ceil(x2)}&y2=${Math.ceil(y2)}&server=${serverId}`;
 
                 const response = await fetch(url);
                 if (!response.ok) return;

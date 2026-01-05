@@ -4,11 +4,6 @@
 
 GAME=${1:-ets2}
 
-if [[ "$GAME" != "ets2" && "$GAME" != "ats" ]]; then
-    echo "ERROR: Invalid game parameter. Use 'ets2' or 'ats'"
-    exit 1
-fi
-
 echo "======================================="
 echo "Generating Vector Tiles with Tippecanoe (Docker)"
 echo "Game: $GAME"

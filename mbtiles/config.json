@@ -5,6 +5,9 @@
     },
     "ats-vector": {
       "mbtiles": "ats.mbtiles"
+    }, 
+    "promods-vector": {
+      "mbtiles": "promods.mbtiles"
     }
   }
 }

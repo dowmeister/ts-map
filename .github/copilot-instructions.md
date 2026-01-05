@@ -6,11 +6,13 @@ This project parses and renders Euro Truck Simulator 2 (ETS2) and American Truck
 
 ### Core Components
 
-- **TsMap (Library)**: Core parsing and rendering logic
+- **TsMap (Library)**: Core parsing and rendering logic (.NET Framework 4.7.2)
   - Reads proprietary SCS game archives (`.scs` files - hash/zip formats)
   - Parses binary sector files (`.base`, `.aux`) containing map data
   - Renders maps using GDI+ graphics
-- **TsMap.Canvas (WinForms App)**: Interactive map viewer with zoom, pan, DLC filtering, and tile export
+  - **Must be built first** - other projects reference the compiled DLL
+- **TsMap.Canvas (WinForms App)**: Interactive map viewer with zoom, pan, DLC filtering, and tile export (.NET Framework 4.7.2)
+- **TsMap.Cli (CLI Tool)**: Command-line GeoJSON/JSON exporter for vector tile workflows (.NET 8.0)
 
 ### Key Data Flow
 
@@ -86,13 +88,55 @@ Map items have a `DlcGuard` byte indicating required DLC. Lists defined in [Cons
 
 ## Building and Running
 
-**Framework**: .NET Framework 4.7.2  
-**Dependencies**: DotNetZip, Newtonsoft.Json, CommandLineParser (via NuGet)
+### Multi-Framework Build Requirements
 
-Build with Visual Studio or MSBuild:
+**TsMap Core**: .NET Framework 4.7.2 (builds DLL referenced by other projects)  
+**TsMap.Canvas**: .NET Framework 4.7.2 (Windows Forms)  
+**TsMap.Cli**: .NET Framework 4.7.2 (CLI tool, references TsMap DLL)  
+**Dependencies**: DotNetZip, Newtonsoft.Json, System.CommandLine (via NuGet), libdeflate.dll (native)
+
+### Build Order
+
+Always build TsMap library first, as other projects reference `TsMap.dll`:
 
 ```powershell
+# Option 1: Use build scripts
+.\build.bat              # Builds TsMap library + TsMap.Cli
+.\build-all.bat         # Full pipeline: build + export + tiles
+
+# Option 2: Manual build
+dotnet build TsMap\TsMap.csproj -c Release
+dotnet build TsMap.Cli\TsMap.Cli.csproj -c Release
+
+# Option 3: Visual Studio
 msbuild TsMap.sln /p:Configuration=Release
+```
+
+### Running the CLI
+
+Export map data for vector tile workflows:
+
+```powershell
+# Basic GeoJSON export
+.\TsMap.Cli\bin\Release\TsMap.Cli.exe -g "E:\SteamLibrary\steamapps\common\Euro Truck Simulator 2" -o ".\map_data\ets2" -f geojson
+
+# With mods (ProMods, RusMap, etc.)
+.\TsMap.Cli\bin\Release\TsMap.Cli.exe -g "<game_path>" -o ".\map_data\promods" -m "<mods_folder>" -l ".\mods\promods.json" -f all
+```
+
+### Docker Vector Tile Workflow
+
+For web-based vector map viewing (requires Docker):
+
+```powershell
+# 1. Export GeoJSON using CLI (see above)
+# 2. Generate vector tiles
+bash docker-tippecanoe.sh ets2
+
+# 3. Start tile server and web viewer
+docker compose up -d
+
+# 4. View at http://localhost:5500/vector-viewer.html?game=ets2
 ```
 
 Run the Canvas app: `TsMap.Canvas/bin/Release/TsMap.Canvas.exe`
@@ -126,6 +170,46 @@ var data = file.Entry.Read();
 ```
 
 Never use `System.IO.File` directly for game data files.
+
+### Mod Loading System
+
+The CLI supports loading game mods via JSON configuration. Example `mods.json`:
+
+```json
+{
+  "mods": [
+    "promods-def-v268.scs",
+    "promods-map-v268.scs"
+  ]
+}
+```
+
+Mods are loaded in order and mounted into `UberFileSystem` as archive overlays. Files in later mods override earlier ones. The `Mod` class has a `Load` flag to enable/disable individual mods without removing from the list.
+
+## GeoJSON Export Pipeline
+
+The CLI tool exports game data to GeoJSON for vector tile generation. See [TsMap.Cli/Program.cs](TsMap.Cli/Program.cs) and [TsMap/GeoJsonExporter.cs](TsMap/GeoJsonExporter.cs).
+
+### Coordinate Conversion
+
+Game coordinates (X/Z plane, units in meters) are converted to WGS84 lat/lng:
+
+```csharp
+private (double lon, double lat) GameToLatLng(float gameX, float gameZ)
+{
+    var normalizedX = (gameX - _mapper.minX) / (_mapper.maxX - _mapper.minX);
+    var normalizedZ = (gameZ - _mapper.minZ) / (_mapper.maxZ - _mapper.minZ);
+    // Maps to ±35° range, preserving aspect ratio
+}
+```
+
+This ensures minimal distortion near the equator for web map viewing.
+
+### Export Formats
+
+- **GeoJSON**: Roads, prefabs (roads/flat/buildings), cities, companies, ferry connections, map areas
+- **JSON**: Cities.json, CompanyDefs.json, BusStops.json, CargoDefs.json
+- **Images**: Company/service overlay icons extracted from game files
 
 ## Tile Map Export System
 

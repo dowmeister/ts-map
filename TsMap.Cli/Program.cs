@@ -1,12 +1,18 @@
+using System;
+using System.Collections.Generic;
 using System.CommandLine;
 using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 using TsMap;
+using Newtonsoft.Json;
 
-namespace TsMap.Cli;
-
-class Program
+namespace TsMap.Cli
 {
-    static async Task<int> Main(string[] args)
+    class Program
+    {
+        static async Task<int> Main(string[] args)
     {
         var gameOption = new Option<DirectoryInfo>(
             name: "--game",
@@ -30,22 +36,34 @@ class Program
             getDefaultValue: () => ExportFormat.All);
         formatOption.AddAlias("-f");
 
+        var modsDirOption = new Option<DirectoryInfo>(
+            name: "--mods-dir",
+            description: "Path to directory containing mod files (optional)");
+        modsDirOption.AddAlias("-m");
+
+        var modsListOption = new Option<FileInfo>(
+            name: "--mods-list",
+            description: "Path to JSON file containing list of mods to load (optional)");
+        modsListOption.AddAlias("-l");
+
         var rootCommand = new RootCommand("TsMap CLI - Export ETS2/ATS map data")
         {
             gameOption,
             outputOption,
-            formatOption
+            formatOption,
+            modsDirOption,
+            modsListOption
         };
 
-        rootCommand.SetHandler(async (gameDir, outputDir, format) =>
+        rootCommand.SetHandler(async (gameDir, outputDir, format, modsDir, modsList) =>
         {
-            await ExportMapData(gameDir, outputDir, format);
-        }, gameOption, outputOption, formatOption);
+            await ExportMapData(gameDir, outputDir, format, modsDir, modsList);
+        }, gameOption, outputOption, formatOption, modsDirOption, modsListOption);
 
         return await rootCommand.InvokeAsync(args);
     }
 
-    static async Task ExportMapData(DirectoryInfo gameDir, DirectoryInfo outputDir, ExportFormat format)
+    static async Task ExportMapData(DirectoryInfo gameDir, DirectoryInfo outputDir, ExportFormat format, DirectoryInfo modsDir, FileInfo modsList)
     {
         if (!gameDir.Exists)
         {
@@ -64,6 +82,17 @@ class Program
         Console.WriteLine($"Game Directory: {gameDir.FullName}");
         Console.WriteLine($"Output Directory: {outputDir.FullName}");
         Console.WriteLine($"Export Format: {format}");
+        
+        // Load mods if specified
+        var mods = new List<Mod>();
+        if (modsDir != null && modsList != null)
+        {
+            Console.WriteLine($"Mods Directory: {modsDir.FullName}");
+            Console.WriteLine($"Mods List: {modsList.FullName}");
+            mods = LoadMods(modsDir, modsList);
+            Console.WriteLine($"Loaded {mods.Count(m => m.Load)} mod(s)");
+        }
+        
         Console.WriteLine();
 
         var stopwatch = Stopwatch.StartNew();
@@ -72,7 +101,7 @@ class Program
         {
             // Initialize TsMapper
             Console.Write("Loading game files... ");
-            var mapper = new TsMapper(gameDir.FullName, new List<Mod>());
+            var mapper = new TsMapper(gameDir.FullName, mods);
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine("✓");
             Console.ResetColor();
@@ -198,6 +227,74 @@ class Program
             Console.ResetColor();
         }
     }
+
+    static List<Mod> LoadMods(DirectoryInfo modsDir, FileInfo modsList)
+    {
+        var mods = new List<Mod>();
+
+        if (!modsDir.Exists)
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"Warning: Mods directory not found: {modsDir.FullName}");
+            Console.ResetColor();
+            return mods;
+        }
+
+        if (!modsList.Exists)
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"Warning: Mods list file not found: {modsList.FullName}");
+            Console.ResetColor();
+            return mods;
+        }
+
+        try
+        {
+            var json = File.ReadAllText(modsList.FullName);
+            var config = JsonConvert.DeserializeObject<ModListConfig>(json);
+
+            if (config?.Mods == null || config.Mods.Count == 0)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine("Warning: No mods found in configuration file");
+                Console.ResetColor();
+                return mods;
+            }
+
+            foreach (var fileName in config.Mods)
+            {
+                var modPath = Path.Combine(modsDir.FullName, fileName);
+                if (File.Exists(modPath))
+                {
+                    var mod = new Mod(modPath)
+                    {
+                        Load = true
+                    };
+                    mods.Add(mod);
+                    Console.WriteLine($"  ✓ {fileName}");
+                }
+                else
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"  ⚠ Mod file not found: {fileName}");
+                    Console.ResetColor();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"Error loading mods: {ex.Message}");
+            Console.ResetColor();
+        }
+
+        return mods;
+    }
+}
+
+class ModListConfig
+{
+    public List<string> Mods { get; set; } = new List<string>();
 }
 
 enum ExportFormat
@@ -205,4 +302,4 @@ enum ExportFormat
     GeoJson,
     Json,
     All
-}
+}}
