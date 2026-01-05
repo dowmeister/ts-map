@@ -1,0 +1,46 @@
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Build arguments for Vite env vars
+ARG VITE_MAP_DEFAULT_PITCH=20
+ARG VITE_MAP_DEFAULT_ZOOM=4
+ARG VITE_MAP_DEFAULT_BEARING=0
+ARG VITE_MAP_DEFAULT_CENTER_LON=0
+ARG VITE_MAP_DEFAULT_CENTER_LAT=0
+ARG VITE_VECTOR_TILES_BASE_URL=http://localhost:8080/data
+ARG VITE_OVERLAY_IMAGES_BASE_URL=/map_data
+
+# Set as environment variables for Vite build
+ENV VITE_MAP_DEFAULT_PITCH=$VITE_MAP_DEFAULT_PITCH
+ENV VITE_MAP_DEFAULT_ZOOM=$VITE_MAP_DEFAULT_ZOOM
+ENV VITE_MAP_DEFAULT_BEARING=$VITE_MAP_DEFAULT_BEARING
+ENV VITE_MAP_DEFAULT_CENTER_LON=$VITE_MAP_DEFAULT_CENTER_LON
+ENV VITE_MAP_DEFAULT_CENTER_LAT=$VITE_MAP_DEFAULT_CENTER_LAT
+ENV VITE_VECTOR_TILES_BASE_URL=$VITE_VECTOR_TILES_BASE_URL
+ENV VITE_OVERLAY_IMAGES_BASE_URL=$VITE_OVERLAY_IMAGES_BASE_URL
+
+# Copy package files
+COPY web-viewer/react-app/package*.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy source files
+COPY web-viewer/react-app/ ./
+
+# Build the app
+RUN npm run build
+
+# Production stage
+FROM nginx:alpine
+
+# Copy built app from builder
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Copy nginx configuration
+COPY web-viewer/react-app/nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

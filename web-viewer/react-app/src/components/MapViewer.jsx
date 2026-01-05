@@ -22,11 +22,14 @@ function MapViewer({ game, onMapLoad, onZoomChange, onBoundsChange, trucks }) {
       container: mapContainer.current,
       projection: 'equirectangular',
       style: createMapStyle(game),
-      center: [0, 0],
-      zoom: 4,
+      center: [
+        parseFloat(import.meta.env.VITE_MAP_DEFAULT_CENTER_LON || 0),
+        parseFloat(import.meta.env.VITE_MAP_DEFAULT_CENTER_LAT || 0)
+      ],
+      zoom: parseFloat(import.meta.env.VITE_MAP_DEFAULT_ZOOM || 4),
       minZoom: 4,
-      pitch: 20,
-      bearing: 0,
+      pitch: parseFloat(import.meta.env.VITE_MAP_DEFAULT_PITCH || 20),
+      bearing: parseFloat(import.meta.env.VITE_MAP_DEFAULT_BEARING || 0),
       renderWorldCopies: false
     })
 
@@ -83,7 +86,8 @@ function MapViewer({ game, onMapLoad, onZoomChange, onBoundsChange, trucks }) {
         }
       }
 
-      img.src = `/map_data/${game}/overlay_images/${imageId}`
+      const baseUrl = import.meta.env.VITE_OVERLAY_IMAGES_BASE_URL || '/map_data'
+      img.src = `${baseUrl}/${game}/overlay_images/${imageId}`
     })
 
     return () => {

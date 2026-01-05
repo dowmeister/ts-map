@@ -13,3 +13,8 @@ TsMap.Canvas/obj
 TsMap.Cli/bin
 TsMap.Cli/obj
 *.mbtiles-journal
+web-viewer/react-app/public
+web-viewer/react-app/node_modules
+*.md
+.env
+.env.local

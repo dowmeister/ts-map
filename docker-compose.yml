@@ -32,3 +32,20 @@ services:
     volumes:
       - ./web-viewer:/usr/share/nginx/html
       - ./map_data:/usr/share/nginx/html/map_data:ro
+
+  # React app server
+  react-app:
+    build:
+      context: .
+      dockerfile: Dockerfile.react
+      args:
+        VITE_MAP_DEFAULT_PITCH: ${VITE_MAP_DEFAULT_PITCH:-20}
+        VITE_MAP_DEFAULT_ZOOM: ${VITE_MAP_DEFAULT_ZOOM:-4}
+        VITE_MAP_DEFAULT_BEARING: ${VITE_MAP_DEFAULT_BEARING:-0}
+        VITE_MAP_DEFAULT_CENTER_LON: ${VITE_MAP_DEFAULT_CENTER_LON:-0}
+        VITE_MAP_DEFAULT_CENTER_LAT: ${VITE_MAP_DEFAULT_CENTER_LAT:-0}
+        VITE_VECTOR_TILES_BASE_URL: ${VITE_VECTOR_TILES_BASE_URL:-http://localhost:8080/data}
+        VITE_OVERLAY_IMAGES_BASE_URL: ${VITE_OVERLAY_IMAGES_BASE_URL:-/map_data}
+    container_name: tsmap-react-app
+    ports:
+      - "${REACT_APP_PORT:-3000}:80"

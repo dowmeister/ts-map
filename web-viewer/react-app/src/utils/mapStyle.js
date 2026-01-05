@@ -5,7 +5,7 @@ export function createMapStyle(game) {
     sources: {
       'map': {
         type: 'vector',
-        tiles: [`http://localhost:8080/data/${game}-vector/{z}/{x}/{y}.pbf`],
+        tiles: [`${import.meta.env.VITE_VECTOR_TILES_BASE_URL || 'http://localhost:8080/data'}/${game}-vector/{z}/{x}/{y}.pbf`],
         minzoom: 4,
         maxzoom: 8
       },
