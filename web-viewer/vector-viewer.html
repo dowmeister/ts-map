@@ -159,16 +159,16 @@
         // This MUST match the GeoJsonExporter.cs GameToLatLng() method exactly
         function gameToMapCoords(gameX, gameZ) {
             if (!tileMapInfo) return [0, 0];
-            
+
             // Use mapper bounds from TileMapInfo.json (exported by CLI)
             const minX = tileMapInfo.x1;
             const maxX = tileMapInfo.x2;
             const minZ = tileMapInfo.y1;
             const maxZ = tileMapInfo.y2;
-            
+
             const width = maxX - minX;
             const height = maxZ - minZ;
-            
+
             const normalizedX = (gameX - minX) / width;
             const normalizedZ = (gameZ - minZ) / height;
             const maxExtent = 70.0; // degrees
@@ -194,7 +194,7 @@
         // Convert map coordinates to game coordinates
         function mapToGameCoords(lon, lat) {
             if (!tileMapInfo) return [0, 0];
-            
+
             // Same bounds as gameToMapCoords
             const minX = tileMapInfo.x1;
             const maxX = tileMapInfo.x2;
@@ -470,13 +470,24 @@
                     },
                     {
                         id: 'trucks',
-                        type: 'circle',
+                        type: 'symbol',
                         source: 'trucks',
-                        paint: {
-                            'circle-radius': 5,
-                            'circle-color': '#00ff00',
-                            'circle-stroke-width': 2,
-                            'circle-stroke-color': '#ffffff'
+                        layout: {
+                            'icon-image': 'truck-icon',
+                            'icon-size': [
+                                'interpolate',
+                                ['linear'],
+                                ['zoom'],
+                                7, 0.15,  // At zoom 7, size 0.15
+                                8, 0.25,  // At zoom 8, size 0.25
+                                9, 0.4,   // At zoom 9, size 0.4
+                                10, 0.6   // At zoom 10, size 0.6
+                            ],
+                            'icon-rotate': ['get', 'heading'],
+                            'icon-rotation-alignment': 'map',
+                            'icon-allow-overlap': true,
+                            'icon-ignore-placement': true,
+                            'icon-offset': [0, -5]
                         },
                         minzoom: 7
                     }
@@ -512,6 +523,41 @@
 
         map.once('load', async () => {
             await loadTileMapInfo();
+
+            // Create truck icon (simple rectangle)
+            const size = 64;
+            const truckCanvas = document.createElement('canvas');
+            truckCanvas.width = size;
+            truckCanvas.height = size;
+            const ctx = truckCanvas.getContext('2d');
+
+            // Draw truck as rectangle pointing up (will be rotated)
+            ctx.translate(size / 2, size / 2); // Center
+
+            // Shadow for elevation effect - larger and more offset
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.fillRect(-6, -12, 16, 32);
+
+            // Truck body (rectangle pointing up) - made larger
+            ctx.fillStyle = '#00d4ff';
+            ctx.strokeStyle = '#003d4d';
+            ctx.lineWidth = 3;
+            ctx.fillRect(-8, -16, 16, 32);
+            ctx.strokeRect(-8, -16, 16, 32);
+
+            // Truck cab (smaller rectangle at front)
+            ctx.fillRect(-6, -20, 12, 8);
+            ctx.strokeRect(-6, -20, 12, 8);
+
+            // Convert canvas to ImageData for MapLibre
+            ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
+            const imageData = ctx.getImageData(0, 0, size, size);
+
+            // Add to map with proper format
+            if (!map.hasImage('truck-icon')) {
+                map.addImage('truck-icon', imageData, { pixelRatio: 1 });
+            }
+
             initializeTrucks();
             await loadCities();
         });
@@ -576,11 +622,16 @@
 
                 const data = await response.json();
 
+                console.log(`Fetched ${data.Data ? data.Data.length : 0} trucks from TruckersMP API`);
+
                 // Convert truck data to GeoJSON
                 const features = data.Data.map(truck => {
                     // Convert game coordinates to map coordinates
                     // TruckersMP API: truck.X = game X, truck.Y = game Z (north-south)
                     const [lon, lat] = gameToMapCoords(truck.X, truck.Y);
+
+                    // Convert heading: negate because TruckersMP is counter-clockwise, MapLibre is clockwise
+                    const headingDegrees = -(truck.Heading * 180 / Math.PI);
 
                     return {
                         type: 'Feature',
@@ -590,6 +641,7 @@
                         },
                         properties: {
                             name: truck.Name,
+                            heading: headingDegrees,
                             mpId: truck.MpId,
                             playerId: truck.PlayerId,
                             vtcId: truck.VtcId
@@ -636,6 +688,9 @@
         // Dynamically load overlay images when MapLibre requests them
         map.on('styleimagemissing', (e) => {
             const imageId = e.id;
+
+            // Skip our custom truck icon
+            if (imageId === 'truck-icon') return;
 
             // Load the image from the exported overlay_images directory
             const img = new Image();
