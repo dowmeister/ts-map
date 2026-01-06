@@ -1,7 +1,17 @@
 export function createMapStyle(game) {
+  const baseUrl = import.meta.env.VITE_OVERLAY_IMAGES_BASE_URL || '/map_data'
+  // Cache busting version - automatically set at build time
+  const spriteVersion = Date.now().toString()
+  
   return {
     version: 8,
     glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+    sprite: [
+      { id: 'company', url: `${baseUrl}/${game}/sprites/sprite-company?v=${spriteVersion}` },
+      { id: 'service', url: `${baseUrl}/${game}/sprites/sprite-service?v=${spriteVersion}` },
+      { id: 'road', url: `${baseUrl}/${game}/sprites/sprite-road?v=${spriteVersion}` },
+      { id: 'misc', url: `${baseUrl}/${game}/sprites/sprite-misc?v=${spriteVersion}` }
+    ],
     sources: {
       'map': {
         type: 'vector',

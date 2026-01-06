@@ -56,40 +56,6 @@ function MapViewer({ game, onMapLoad, onZoomChange, onBoundsChange, trucks }) {
     map.current.on('move', updateMapState)
     map.current.on('zoom', updateMapState)
 
-    map.current.on('styleimagemissing', (e) => {
-      const imageId = e.id
-      const img = new Image()
-      img.crossOrigin = 'anonymous'
-
-      img.onload = () => {
-        if (!map.current.hasImage(imageId)) {
-          map.current.addImage(imageId, img)
-        }
-      }
-
-      img.onerror = () => {
-        const size = 32
-        const canvas = document.createElement('canvas')
-        canvas.width = size
-        canvas.height = size
-        const ctx = canvas.getContext('2d')
-        ctx.fillStyle = '#ffaa00'
-        ctx.beginPath()
-        ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.strokeStyle = '#ffffff'
-        ctx.lineWidth = 2
-        ctx.stroke()
-
-        if (!map.current.hasImage(imageId)) {
-          map.current.addImage(imageId, canvas)
-        }
-      }
-
-      const baseUrl = import.meta.env.VITE_OVERLAY_IMAGES_BASE_URL || '/map_data'
-      img.src = `${baseUrl}/${game}/overlay_images/${imageId}`
-    })
-
     return () => {
       if (map.current) {
         map.current.remove()

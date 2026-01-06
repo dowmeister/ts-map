@@ -835,6 +835,30 @@ namespace TsMap
                 // Create unique filename for this overlay
                 string imageFileName = $"{overlayTypeStr}_{iconName}.png";
                 string imagePath = Path.Combine(imagesDirectory, imageFileName);
+                
+                // Determine sprite group based on icon name pattern
+                string spriteGroup = "misc"; // default
+                string iconBaseName = $"{overlayTypeStr}_{iconName}";
+                
+                if (iconBaseName.StartsWith("company_", StringComparison.OrdinalIgnoreCase) || 
+                    iconBaseName.StartsWith("dlc_", StringComparison.OrdinalIgnoreCase))
+                {
+                    spriteGroup = "company";
+                }
+                else if (iconBaseName.StartsWith("service_", StringComparison.OrdinalIgnoreCase) ||
+                         iconBaseName.StartsWith("map_", StringComparison.OrdinalIgnoreCase))
+                {
+                    spriteGroup = "service";
+                }
+                else if (iconBaseName.StartsWith("road_", StringComparison.OrdinalIgnoreCase) ||
+                         iconBaseName.StartsWith("highway_", StringComparison.OrdinalIgnoreCase) ||
+                         iconBaseName.StartsWith("sign_", StringComparison.OrdinalIgnoreCase))
+                {
+                    spriteGroup = "road";
+                }
+                
+                // Sprite icon name with group prefix (e.g., "company:company_agrominta_a")
+                string spriteIconName = $"{spriteGroup}:{iconBaseName}";
 
                 // Export the bitmap if we haven't already
                 if (!exportedImages.Contains(imageFileName))
@@ -864,10 +888,11 @@ namespace TsMap
                     },
                     ["properties"] = new JObject
                     {
+                        ["version"] = "sprite",
                         ["overlay_type"] = overlayTypeStr,
                         ["overlay_name"] = iconName,
                         ["type_name"] = overlay.TypeName,
-                        ["image"] = imageFileName,
+                        ["image"] = spriteIconName,
                         ["dlc_guard"] = overlay.DlcGuard
                     }
                 });

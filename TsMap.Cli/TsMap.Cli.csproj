@@ -12,9 +12,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Reference Include="TsMap">
-      <HintPath>..\TsMap\bin\$(Configuration)\TsMap.dll</HintPath>
-    </Reference>
     <Reference Include="Newtonsoft.Json">
       <HintPath>..\packages\Newtonsoft.Json.13.0.1\lib\net45\Newtonsoft.Json.dll</HintPath>
     </Reference>
@@ -36,6 +33,10 @@
     <None Include="..\libs\libdeflate.dll" Link="libdeflate.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TsMap\TsMap.csproj" />
   </ItemGroup>
 
 </Project>
