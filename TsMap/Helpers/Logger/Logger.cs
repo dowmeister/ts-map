@@ -25,7 +25,7 @@ namespace TsMap.Helpers.Logger
             var logDirPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ts-map");
             if (!Directory.Exists(logDirPath)) Directory.CreateDirectory(logDirPath);
 
-            _fs = new FileStream(Path.Combine(logDirPath, "TsMap.log"), FileMode.Create);
+            _fs = new FileStream(Path.Combine(logDirPath, "TsMap.log"), FileMode.Create, FileAccess.Write, FileShare.Read);
             _sw = new StreamWriter(_fs);
             Task.Run(() =>
             {

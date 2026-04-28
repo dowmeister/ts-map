@@ -45,6 +45,7 @@ namespace TsMap
         public readonly List<TsTriggerItem> Triggers = new List<TsTriggerItem>();
         public readonly List<TsCutsceneItem> Viewpoints = new List<TsCutsceneItem>();
         public readonly List<TsBusStopItem> BusStops = new List<TsBusStopItem>();
+        public readonly List<TsBuildingItem> Buildings = new List<TsBuildingItem>();
         public readonly List<TsCargoDef> CargoDefs = new List<TsCargoDef>();
         public readonly List<TsCompanyDef> CompanyDefs = new List<TsCompanyDef>();
         public readonly List<TsServiceDef> Services = new List<TsServiceDef>();

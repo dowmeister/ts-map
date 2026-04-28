@@ -371,8 +371,8 @@
                         'source-layer': 'prefab_buildings',
                         paint: {
                             'fill-extrusion-color': ['get', 'color'],
-                            'fill-extrusion-height': 400,
-                            'fill-extrusion-base': 0,
+                            'fill-extrusion-height': ['coalesce', ['get', 'height'], ['coalesce', ['get', 'elevation'], 0]],
+                            'fill-extrusion-base': ['coalesce', ['get', 'elevation'], 0],
                             'fill-extrusion-opacity': 1,
                         }
                     },
@@ -383,9 +383,21 @@
                         'source-layer': 'map_buildings',
                         paint: {
                             'fill-extrusion-color': ['get', 'color'],
-                            'fill-extrusion-height': 400,
-                            'fill-extrusion-base': 0,
+                            'fill-extrusion-height': ['coalesce', ['get', 'height'], ['coalesce', ['get', 'elevation'], 0]],
+                            'fill-extrusion-base': ['coalesce', ['get', 'elevation'], 0],
                             'fill-extrusion-opacity': 1,
+                        }
+                    },
+                    {
+                        id: 'buildings',
+                        type: 'fill-extrusion',
+                        source: 'map',
+                        'source-layer': 'buildings',
+                        paint: {
+                            'fill-extrusion-color': '#c8a882',
+                            'fill-extrusion-height': ['coalesce', ['get', 'height'], 500],
+                            'fill-extrusion-base': ['coalesce', ['get', 'elevation'], 0],
+                            'fill-extrusion-opacity': 0.95,
                         }
                     },
                     {
@@ -469,7 +481,7 @@
             center: [0, 0],  // Map is centered at origin with new coordinate system
             zoom: 4,
             minZoom: 4,
-            pitch: 20,  // Isometric view to show 3D building elevation
+            pitch: 45,  // Isometric view to show 3D building elevation
             bearing: 0,
             renderWorldCopies: false  // Don't repeat the map - this is a fixed game map, not the earth
         });

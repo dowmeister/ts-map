@@ -173,6 +173,12 @@ namespace TsMap.Cli
                     Console.WriteLine("✓");
                     Console.ResetColor();
 
+                    Console.Write("  → buildings.geojson... ");
+                    exporter.ExportBuildings(Path.Combine(geoJsonPath, "buildings.geojson"));
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine("✓");
+                    Console.ResetColor();
+
                     Console.Write("  → overlays.geojson... ");
                     exporter.ExportOverlays(
                         Path.Combine(geoJsonPath, "overlays.geojson"),

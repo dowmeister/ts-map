@@ -69,6 +69,7 @@ namespace TsMap
                     {
                         item = new TsBuildingItem(this, lastOffset);
                         lastOffset += item.BlockSize;
+                        if (item.Valid && !item.Hidden) Mapper.Buildings.Add((TsBuildingItem)item);
                         break;
                     }
                     case TsItemType.Road:

@@ -9,6 +9,7 @@ namespace TsMap
     public struct TsPrefabNode
     {
         public float X;
+        public float Y;
         public float Z;
         public float RotX;
         public float RotZ;
@@ -18,6 +19,7 @@ namespace TsMap
     public struct TsMapPoint
     {
         public float X;
+        public float Y;
         public float Z;
         public int LaneOffset;
         public int LaneCount;
@@ -117,6 +119,7 @@ namespace TsMap
                 var node = new TsPrefabNode
                 {
                     X = MemoryHelper.ReadSingle(_stream, nodeBaseOffset + 0x10),
+                    Y = MemoryHelper.ReadSingle(_stream, nodeBaseOffset + 0x14),
                     Z = MemoryHelper.ReadSingle(_stream, nodeBaseOffset + 0x18),
                     RotX = MemoryHelper.ReadSingle(_stream, nodeBaseOffset + 0x1C),
                     RotZ = MemoryHelper.ReadSingle(_stream, nodeBaseOffset + 0x24),
@@ -213,6 +216,7 @@ namespace TsMap
                     Hidden = hidden,
                     PrefabColorFlags = prefabColorFlags,
                     X = MemoryHelper.ReadSingle(_stream, mapPointBaseOffset + 0x08),
+                    Y = MemoryHelper.ReadSingle(_stream, mapPointBaseOffset + 0x0C),
                     Z = MemoryHelper.ReadSingle(_stream, mapPointBaseOffset + 0x10),
                     Neighbours = new List<int>(),
                     NeighbourCount = MemoryHelper.ReadInt32(_stream, mapPointBaseOffset + 0x14 + (0x04 * 6)),

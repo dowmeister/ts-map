@@ -94,6 +94,36 @@ namespace TsMap
         }
 
         /// <summary>
+        /// Compute polygon area using the shoelace formula (in lon/lat sq-degrees)
+        /// </summary>
+        private static double ComputePolygonArea(List<(double lon, double lat, double ele)> points)
+        {
+            double area = 0;
+            int n = points.Count;
+            for (int i = 0; i < n - 1; i++)
+                area += points[i].lon * points[i + 1].lat - points[i + 1].lon * points[i].lat;
+            return Math.Abs(area) / 2.0;
+        }
+
+        /// <summary>
+        /// Map polygon area (lon/lat sq-degrees) to a fill-extrusion height in MapLibre units.
+        /// Smaller area → taller building, larger area → lower (industrial).
+        /// Reference: 0.00015 sq-deg ≈ medium building → 500 units.
+        /// </summary>
+        private static double AreaToHeight(double area)
+        {
+            // Calibrated to real ETS2 building footprint sizes (sq-deg):
+            //   P25≈1e-5, Median≈2.2e-5, P75≈5e-5, P90≈1e-4
+            // reference=P75 area → buildings at P75 get baseHeight=200.
+            // Smaller footprint → taller (denser urban block), larger → lower (industrial/warehouse).
+            const double minArea = 1e-7;
+            const double reference = 5e-5;
+            const double baseHeight = 200.0;
+            var clampedArea = Math.Max(area, minArea);
+            return Math.Max(60.0, Math.Min(500.0, baseHeight * Math.Sqrt(reference / clampedArea)));
+        }
+
+        /// <summary>
         /// Export all map data as GeoJSON files
         /// </summary>
         public void ExportAll(string outputPath)
@@ -114,6 +144,7 @@ namespace TsMap
             ExportMapAreas(
                 Path.Combine(outputPath, "map_flat.geojson"),
                 Path.Combine(outputPath, "map_buildings.geojson"));
+            ExportBuildings(Path.Combine(outputPath, "buildings.geojson"));
 
             Logger.Instance.Info($"GeoJSON export completed to: {outputPath}");
         }
@@ -139,7 +170,7 @@ namespace TsMap
                 var halfWidth = roadWidth / 2f;
 
                 // Get curve points
-                var curvePoints = new List<(float x, float z)>();
+                var curvePoints = new List<(float x, float z, float y)>();
 
                 if (!road.HasPoints())
                 {
@@ -160,22 +191,26 @@ namespace TsMap
                         var s = i / (float)(16 - 1);
                         var x = (float)TsRoadLook.Hermite(s, sx, ex, tanSx, tanEx);
                         var z = (float)TsRoadLook.Hermite(s, sz, ez, tanSz, tanEz);
-                        curvePoints.Add((x, z));
+                        var y = startNode.Y + (endNode.Y - startNode.Y) * s;
+                        curvePoints.Add((x, z, y));
                     }
                 }
                 else
                 {
-                    foreach (var point in road.GetPoints())
+                    var rawPoints = road.GetPoints();
+                    for (int pi = 0; pi < rawPoints.Length; pi++)
                     {
-                        curvePoints.Add((point.X, point.Y));
+                        var s = rawPoints.Length > 1 ? pi / (float)(rawPoints.Length - 1) : 0f;
+                        var y = startNode.Y + (endNode.Y - startNode.Y) * s;
+                        curvePoints.Add((rawPoints[pi].X, rawPoints[pi].Y, y));
                     }
                 }
 
                 if (curvePoints.Count < 2) continue;
 
                 // Create polygon by offsetting curve perpendicular on both sides
-                var leftSide = new List<(double lon, double lat)>();
-                var rightSide = new List<(double lon, double lat)>();
+                var leftSide = new List<(double lon, double lat, double ele)>();
+                var rightSide = new List<(double lon, double lat, double ele)>();
 
                 for (int i = 0; i < curvePoints.Count; i++)
                 {
@@ -214,22 +249,22 @@ namespace TsMap
                     var (lon1, lat1) = GameToLatLng(curvePoints[i].x + perpX, curvePoints[i].z + perpZ);
                     var (lon2, lat2) = GameToLatLng(curvePoints[i].x - perpX, curvePoints[i].z - perpZ);
 
-                    leftSide.Add((lon1, lat1));
-                    rightSide.Add((lon2, lat2));
+                    leftSide.Add((lon1, lat1, curvePoints[i].y));
+                    rightSide.Add((lon2, lat2, curvePoints[i].y));
                 }
 
                 // Build closed polygon: left side forward + right side backward + close
                 var polygonCoords = new JArray();
                 foreach (var point in leftSide)
                 {
-                    polygonCoords.Add(new JArray { point.lon, point.lat });
+                    polygonCoords.Add(new JArray { point.lon, point.lat, point.ele });
                 }
                 for (int i = rightSide.Count - 1; i >= 0; i--)
                 {
-                    polygonCoords.Add(new JArray { rightSide[i].lon, rightSide[i].lat });
+                    polygonCoords.Add(new JArray { rightSide[i].lon, rightSide[i].lat, rightSide[i].ele });
                 }
                 // Close the ring
-                polygonCoords.Add(new JArray { leftSide[0].lon, leftSide[0].lat });
+                polygonCoords.Add(new JArray { leftSide[0].lon, leftSide[0].lat, leftSide[0].ele });
 
                 features.Add(new JObject
                 {
@@ -296,7 +331,7 @@ namespace TsMap
                     // NON-ROAD PREFAB (matches TsMapRenderer lines 200-256)
                     if (mapPoint.LaneCount == -1)
                     {
-                        var polyPoints = new Dictionary<int, (float X, float Z)>();
+                        var polyPoints = new Dictionary<int, (float X, float Z, float Y)>();
                         var nextPoint = i;
 
                         do
@@ -310,7 +345,8 @@ namespace TsMap
                                     nextPoint = neighbour;
                                     var mp = prefab.MapPoints[nextPoint];
                                     var worldPoint = TransformPrefabPoint(mp.X, mp.Z, prefabStartX, prefabStartZ, rot, origin);
-                                    polyPoints.Add(nextPoint, worldPoint);
+                                    var worldY = origin.Y - mapPointOrigin.Y + mp.Y;
+                                    polyPoints.Add(nextPoint, (worldPoint.X, worldPoint.Z, worldY));
                                     break;
                                 }
                                 nextPoint = -1;
@@ -348,13 +384,19 @@ namespace TsMap
 
                         var coordinates = new JArray();
                         var ring = new JArray();
+                        var pointList = new List<(double lon, double lat, double ele)>();
                         foreach (var point in polyPoints.Values)
                         {
                             var (lon, lat) = GameToLatLng(point.X, point.Z);
-                            ring.Add(new JArray { lon, lat });
+                            pointList.Add((lon, lat, (double)point.Y));
+                            ring.Add(new JArray { lon, lat, (double)point.Y });
                         }
                         ring.Add(ring[0]);
                         coordinates.Add(ring);
+
+                        var minEle = polyPoints.Values.Min(p => p.Y);
+                        var prefabBldArea = ComputePolygonArea(pointList);
+                        var prefabBldHeight = areaType == "dark" ? AreaToHeight(prefabBldArea) : 0.0;
 
                         var feature = new JObject
                         {
@@ -366,10 +408,12 @@ namespace TsMap
                             },
                             ["properties"] = new JObject
                             {
-                                ["prefab_token"] = prefab.Token,
+                                ["prefab_token"] = ScsToken.TokenToString(prefab.Token),
                                 ["area_type"] = areaType,
                                 ["color"] = color,
                                 ["elevated"] = roadOver,
+                                ["elevation"] = (double)minEle,
+                                ["height"] = areaType == "dark" ? (double?)((double)minEle + prefabBldHeight) : null,
                                 ["dlc_guard"] = prefabItem.DlcGuard
                             }
                         };
@@ -444,12 +488,14 @@ namespace TsMap
                         var (lon2, lat2) = GameToLatLng(corner2.X, corner2.Z);
                         var (lon3, lat3) = GameToLatLng(corner3.X, corner3.Z);
                         var (lon4, lat4) = GameToLatLng(corner4.X, corner4.Z);
+                        var eleStart = (double)(origin.Y - mapPointOrigin.Y + mapPoint.Y);
+                        var eleEnd = (double)(origin.Y - mapPointOrigin.Y + neighbourPoint.Y);
 
-                        coordinates.Add(new JArray { lon1, lat1 });
-                        coordinates.Add(new JArray { lon2, lat2 });
-                        coordinates.Add(new JArray { lon3, lat3 });
-                        coordinates.Add(new JArray { lon4, lat4 });
-                        coordinates.Add(new JArray { lon1, lat1 });
+                        coordinates.Add(new JArray { lon1, lat1, eleStart });
+                        coordinates.Add(new JArray { lon2, lat2, eleEnd });
+                        coordinates.Add(new JArray { lon3, lat3, eleEnd });
+                        coordinates.Add(new JArray { lon4, lat4, eleStart });
+                        coordinates.Add(new JArray { lon1, lat1, eleStart });
 
                         roadFeatures.Add(new JObject
                         {
@@ -462,7 +508,7 @@ namespace TsMap
                             ["properties"] = new JObject
                             {
                                 ["road_type"] = "prefab",
-                                ["prefab_token"] = prefab.Token,
+                                ["prefab_token"] = ScsToken.TokenToString(prefab.Token),
                                 ["lane_count"] = (mapPointLaneCount + neighbourLaneCount) / 2,
                                 ["dlc_guard"] = prefabItem.DlcGuard
                             }
@@ -725,14 +771,14 @@ namespace TsMap
                     continue;
                 }
 
-                var points = new List<(double lon, double lat)>();
+                var points = new List<(double lon, double lat, double ele)>();
 
                 foreach (var mapAreaNode in mapArea.NodeUids)
                 {
                     var node = _mapper.GetNodeByUid(mapAreaNode);
                     if (node == null) continue;
                     var (lon, lat) = GameToLatLng(node.X, node.Z);
-                    points.Add((lon, lat));
+                    points.Add((lon, lat, node.Y));
                 }
 
                 if (points.Count < 3) continue;
@@ -762,8 +808,11 @@ namespace TsMap
                 var coordinates = new JArray();
                 foreach (var point in points)
                 {
-                    coordinates.Add(new JArray { point.lon, point.lat });
+                    coordinates.Add(new JArray { point.lon, point.lat, point.ele });
                 }
+
+                var minElevation = points.Take(points.Count - 1).Min(p => p.ele);
+                var buildingHeight = isBuilding ? AreaToHeight(ComputePolygonArea(points)) : 0.0;
 
                 var feature = new JObject
                 {
@@ -777,6 +826,8 @@ namespace TsMap
                     {
                         ["color"] = fillColor,
                         ["z_index"] = zIndex,
+                        ["elevation"] = minElevation,
+                        ["height"] = isBuilding ? (double?)(minElevation + buildingHeight) : null,
                         ["dlc_guard"] = mapArea.DlcGuard
                     }
                 };
@@ -801,6 +852,90 @@ namespace TsMap
 
             Logger.Instance.Info($"Exported {flatFeatures.Count} map areas (flat) to {Path.GetFileName(flatFilePath)}");
             Logger.Instance.Info($"Exported {buildingFeatures.Count} map areas (buildings) to {Path.GetFileName(buildingsFilePath)}");
+        }
+
+        /// <summary>
+        /// Export TsBuildingItem procedural buildings as GeoJSON Polygons with actual height from HeightValues.
+        /// Buildings are rendered as buffered rectangles along their start→end node spline.
+        /// </summary>
+        public void ExportBuildings(string filePath)
+        {
+            var features = new JArray();
+
+            foreach (var building in _mapper.Buildings)
+            {
+                if (building.NodeUids == null || building.NodeUids.Length < 2) continue;
+
+                var startNode = _mapper.GetNodeByUid(building.NodeUids[0]);
+                var endNode = _mapper.GetNodeByUid(building.NodeUids[1]);
+                if (startNode == null || endNode == null) continue;
+
+                // TsBuildingItem are procedural WALL/FACADE elements along a spline, not standalone buildings.
+                // Render as thin vertical walls: narrow width, modest height (1-2 storeys).
+                double buildingHeight;
+                if (building.HeightValues != null && building.HeightValues.Length > 0)
+                {
+                    var sumH = 0f;
+                    foreach (var h in building.HeightValues) sumH += h;
+                    var avgH = sumH / building.HeightValues.Length;
+                    // avg HeightValue is likely in game units (~1 unit = 1m). 1 storey ≈ 4m ≈ 80 MapLibre units.
+                    buildingHeight = Math.Max(60.0, Math.Min(200.0, avgH * 15.0));
+                }
+                else
+                {
+                    buildingHeight = 80.0; // default: ~1 storey wall
+                }
+
+                // Build rectangle polygon: thin wall (4 game units wide)
+                var dx = endNode.X - startNode.X;
+                var dz = endNode.Z - startNode.Z;
+                var len = (float)Math.Sqrt(dx * dx + dz * dz);
+                if (len < 5f) continue;
+                const float halfWidth = 4f;
+
+                var perpX = -dz / len * halfWidth;
+                var perpZ = dx / len * halfWidth;
+
+                var (lon1, lat1) = GameToLatLng(startNode.X + perpX, startNode.Z + perpZ);
+                var (lon2, lat2) = GameToLatLng(endNode.X + perpX, endNode.Z + perpZ);
+                var (lon3, lat3) = GameToLatLng(endNode.X - perpX, endNode.Z - perpZ);
+                var (lon4, lat4) = GameToLatLng(startNode.X - perpX, startNode.Z - perpZ);
+
+                var elevation = (double)Math.Min(startNode.Y, endNode.Y);
+
+                var ring = new JArray
+                {
+                    new JArray { lon1, lat1, elevation },
+                    new JArray { lon2, lat2, elevation },
+                    new JArray { lon3, lat3, elevation },
+                    new JArray { lon4, lat4, elevation },
+                    new JArray { lon1, lat1, elevation },
+                };
+
+                features.Add(new JObject
+                {
+                    ["type"] = "Feature",
+                    ["geometry"] = new JObject
+                    {
+                        ["type"] = "Polygon",
+                        ["coordinates"] = new JArray { ring }
+                    },
+                    ["properties"] = new JObject
+                    {
+                        ["scheme"] = Common.ScsToken.TokenToString(building.SchemeToken),
+                        ["height"] = elevation + buildingHeight,
+                        ["elevation"] = elevation,
+                        ["dlc_guard"] = building.DlcGuard
+                    }
+                });
+            }
+
+            File.WriteAllText(filePath, new JObject
+            {
+                ["type"] = "FeatureCollection",
+                ["features"] = features
+            }.ToString(Formatting.None));
+            Logger.Instance.Info($"Exported {features.Count} procedural buildings to {Path.GetFileName(filePath)}");
         }
 
         /// <summary>

@@ -37,6 +37,7 @@ docker run --rm \
     -L prefab_buildings:/data/geojson/prefab_buildings.geojson \
     -L map_flat:/data/geojson/map_flat.geojson \
     -L map_buildings:/data/geojson/map_buildings.geojson \
+    -L buildings:/data/geojson/buildings.geojson \
     -L ferries:/data/geojson/ferries.geojson \
     -L cities:/data/geojson/cities.geojson \
     -L companies:/data/geojson/companies.geojson \
