@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using TsMap;
+using TsMap.Routing;
 using Newtonsoft.Json;
 
 namespace TsMap.Cli
@@ -46,24 +47,31 @@ namespace TsMap.Cli
             description: "Path to JSON file containing list of mods to load (optional)");
         modsListOption.AddAlias("-l");
 
+        var validateOption = new Option<bool>(
+            name: "--validate-routing-graph",
+            description: "Run 8 validation checks after export and write routing-graph-validation.txt",
+            getDefaultValue: () => false);
+        validateOption.AddAlias("--validate");
+
         var rootCommand = new RootCommand("TsMap CLI - Export ETS2/ATS map data")
         {
             gameOption,
             outputOption,
             formatOption,
             modsDirOption,
-            modsListOption
+            modsListOption,
+            validateOption
         };
 
-        rootCommand.SetHandler(async (gameDir, outputDir, format, modsDir, modsList) =>
+        rootCommand.SetHandler(async (gameDir, outputDir, format, modsDir, modsList, validate) =>
         {
-            await ExportMapData(gameDir, outputDir, format, modsDir, modsList);
-        }, gameOption, outputOption, formatOption, modsDirOption, modsListOption);
+            await ExportMapData(gameDir, outputDir, format, modsDir, modsList, validate);
+        }, gameOption, outputOption, formatOption, modsDirOption, modsListOption, validateOption);
 
         return await rootCommand.InvokeAsync(args);
     }
 
-    static async Task ExportMapData(DirectoryInfo gameDir, DirectoryInfo outputDir, ExportFormat format, DirectoryInfo modsDir, FileInfo modsList)
+    static async Task ExportMapData(DirectoryInfo gameDir, DirectoryInfo outputDir, ExportFormat format, DirectoryInfo modsDir, FileInfo modsList, bool validateRoutingGraph = false)
     {
         if (!gameDir.Exists)
         {
@@ -129,6 +137,7 @@ namespace TsMap.Cli
                 Directory.CreateDirectory(geoJsonPath);
 
                 var exporter = new GeoJsonExporter(mapper);
+                RoutingGraph capturedGraph = null;
 
                 await Task.Run(() =>
                 {
@@ -195,7 +204,23 @@ namespace TsMap.Cli
                     Console.ResetColor();
 
                     mapper.ExportInfo(outputDir.FullName);
+
+                    Console.Write("  → routing-graph.json... ");
+                    capturedGraph = new RoutingGraphBuilder(mapper).Build();
+                    var graphExporter = new GraphExporter(capturedGraph);
+                    graphExporter.Export(Path.Combine(geoJsonPath, "routing-graph.json"));
+                    graphExporter.ExportPrefabPaths(Path.Combine(geoJsonPath, "routing-edge-paths.json"));
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"✓ ({capturedGraph.Nodes.Count:N0} nodes, {capturedGraph.Edges.Count:N0} edges)");
+                    Console.ResetColor();
                 });
+
+                if (validateRoutingGraph && capturedGraph != null)
+                {
+                    Console.WriteLine();
+                    Console.WriteLine("Running routing graph validation...");
+                    new GraphValidator(mapper, capturedGraph).Validate(geoJsonPath);
+                }
 
                 Console.WriteLine();
             }

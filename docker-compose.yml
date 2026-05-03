@@ -33,6 +33,21 @@ services:
       - ./web-viewer:/usr/share/nginx/html
       - ./map_data:/usr/share/nginx/html/map_data:ro
 
+  # Routing engine (A* on ETS2/ATS routing graph)
+  routing:
+    build:
+      context: .
+      dockerfile: Dockerfile.routing
+    container_name: tsmap-routing
+    ports:
+      - "${ROUTING_PORT:-3001}:3001"
+    volumes:
+      - ./map_data:/data:ro
+    environment:
+      MAP_DATA_PATH: /data
+      PORT: 3001
+    restart: unless-stopped
+
   # React app server
   react-app:
     build:

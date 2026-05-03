@@ -12,6 +12,7 @@ function GameSwitcher({ currentGame, onGameChange }) {
         <option value="ets2">Euro Truck Simulator 2</option>
         <option value="ats">American Truck Simulator</option>
         <option value="promods">Promods</option>
+        <option value="gu">Grand Utopia</option>
       </select>
     </div>
   )

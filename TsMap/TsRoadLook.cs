@@ -34,5 +34,10 @@ namespace TsMap
             return Offset + Consts.LaneWidth * LanesLeft.Count + Consts.LaneWidth * LanesRight.Count;
         }
 
+        // Road is bidirectional if it has lanes in both directions
+        public bool IsBidirectional()
+        {
+            return LanesLeft.Count > 0 && LanesRight.Count > 0;
+        }
     }
 }

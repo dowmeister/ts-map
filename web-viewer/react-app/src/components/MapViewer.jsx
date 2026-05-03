@@ -64,10 +64,19 @@ function MapViewer({ game, onMapLoad, onZoomChange, onBoundsChange, trucks }) {
     }
   }, [])
 
-  // Update style when game changes
+  // Update style and reset viewport when game changes
   useEffect(() => {
     if (map.current && map.current.isStyleLoaded()) {
       map.current.setStyle(createMapStyle(game))
+      map.current.jumpTo({
+        center: [
+          parseFloat(import.meta.env.VITE_MAP_DEFAULT_CENTER_LON || 0),
+          parseFloat(import.meta.env.VITE_MAP_DEFAULT_CENTER_LAT || 0),
+        ],
+        zoom:    parseFloat(import.meta.env.VITE_MAP_DEFAULT_ZOOM    || 4),
+        pitch:   parseFloat(import.meta.env.VITE_MAP_DEFAULT_PITCH   || 20),
+        bearing: parseFloat(import.meta.env.VITE_MAP_DEFAULT_BEARING || 0),
+      })
     }
   }, [game])
 

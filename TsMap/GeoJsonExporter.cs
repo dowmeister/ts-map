@@ -149,6 +149,29 @@ namespace TsMap
             Logger.Instance.Info($"GeoJSON export completed to: {outputPath}");
         }
 
+        private static string GetRoadClass(TsRoadLook look)
+        {
+            if (look == null) return "normal";
+            var totalLanes = look.LanesLeft.Count + look.LanesRight.Count;
+            if (totalLanes <= 1) return "local";
+            // Highways have 2+ lanes per direction (e.g. 2+2, 2+1, 3+2)
+            var maxPerDirection = Math.Max(look.LanesLeft.Count, look.LanesRight.Count);
+            if (maxPerDirection >= 2) return "highway";
+            return "normal";
+        }
+
+        private bool IsPrefabHighway(TsPrefabItem prefabItem)
+        {
+            foreach (var nodeUid in prefabItem.Nodes)
+            {
+                var node = _mapper.GetNodeByUid(nodeUid);
+                if (node == null) continue;
+                if (node.ForwardItem  is TsRoadItem fwd && GetRoadClass(fwd.RoadLook) == "highway") return true;
+                if (node.BackwardItem is TsRoadItem bwd && GetRoadClass(bwd.RoadLook) == "highway") return true;
+            }
+            return false;
+        }
+
         /// <summary>
         /// Export roads as GeoJSON Polygons with actual width (not LineStrings)
         /// Creates filled polygons similar to prefab roads for seamless connections
@@ -276,9 +299,10 @@ namespace TsMap
                     },
                     ["properties"] = new JObject
                     {
-                        ["road_type"] = road.RoadLook?.Token.ToString() ?? "unknown",
-                        ["width"] = roadWidth,
-                        ["dlc_guard"] = road.DlcGuard
+                        ["road_type"]  = road.RoadLook?.Token.ToString() ?? "unknown",
+                        ["road_class"] = GetRoadClass(road.RoadLook),
+                        ["width"]      = roadWidth,
+                        ["dlc_guard"]  = road.DlcGuard
                     }
                 });
             }
@@ -312,6 +336,8 @@ namespace TsMap
                 if (origin == null) continue;
                 if (prefab.PrefabNodes == null) continue;
                 if (prefab.MapPoints == null || prefab.MapPoints.Count == 0) continue;
+
+                var prefabHighway = IsPrefabHighway(prefabItem);
 
                 // Calculate transformation (matches TsMapRenderer lines 189-192)
                 var mapPointOrigin = prefab.PrefabNodes[prefabItem.Origin];
@@ -497,6 +523,11 @@ namespace TsMap
                         coordinates.Add(new JArray { lon4, lat4, eleStart });
                         coordinates.Add(new JArray { lon1, lat1, eleStart });
 
+                        var averageLaneCount = (mapPointLaneCount + neighbourLaneCount) / 2;
+                        var segmentRoadClass = prefabHighway
+                            ? "highway"
+                            : (averageLaneCount <= 2 ? "local" : "normal");
+
                         roadFeatures.Add(new JObject
                         {
                             ["type"] = "Feature",
@@ -507,10 +538,11 @@ namespace TsMap
                             },
                             ["properties"] = new JObject
                             {
-                                ["road_type"] = "prefab",
+                                ["road_type"]    = "prefab",
+                                ["road_class"]   = segmentRoadClass,
                                 ["prefab_token"] = ScsToken.TokenToString(prefab.Token),
-                                ["lane_count"] = (mapPointLaneCount + neighbourLaneCount) / 2,
-                                ["dlc_guard"] = prefabItem.DlcGuard
+                                ["lane_count"]   = averageLaneCount,
+                                ["dlc_guard"]    = prefabItem.DlcGuard
                             }
                         });
                     }
@@ -591,6 +623,10 @@ namespace TsMap
         public void ExportCompanies(string filePath)
         {
             var features = new JArray();
+            var companyDefByInGameId = _mapper.CompanyDefs
+                .Where(d => d.InGameId != null)
+                .GroupBy(d => d.InGameId.Split('.').Last())
+                .ToDictionary(g => g.Key, g => g.First());
 
             foreach (var company in _mapper.Companies)
             {
@@ -601,6 +637,8 @@ namespace TsMap
                 if (node == null) continue;
 
                 var (lon, lat) = GameToLatLng(node.X, node.Z);
+                companyDefByInGameId.TryGetValue(company.CompanyDefId, out var def);
+                var name = def?.Name ?? company.CompanyDefId;
 
                 features.Add(new JObject
                 {
@@ -612,6 +650,8 @@ namespace TsMap
                     },
                     ["properties"] = new JObject
                     {
+                        ["name"] = name,
+                        ["id"] = company.CompanyDefId,
                         ["dlc_guard"] = company.DlcGuard
                     }
                 });

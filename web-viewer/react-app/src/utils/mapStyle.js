@@ -1,188 +1,374 @@
+const _SZ = ['interpolate', ['linear'], ['zoom'], 7, 0.08, 8, 0.12, 9, 0.18, 10, 0.26, 11, 0.35, 13, 0.45];
+const _SZ_LG = ['interpolate', ['linear'], ['zoom'], 7, 0.13, 8, 0.19, 9, 0.29, 10, 0.42, 11, 0.56, 13, 0.72];
+
+function _ov(id, filter, size = _SZ) {
+  return { id, type: 'symbol', source: 'map', 'source-layer': 'overlays', minzoom: 7, filter,
+    layout: { 'icon-image': ['get', 'image'], 'icon-size': size, 'icon-allow-overlap': true, 'icon-ignore-placement': true } };
+}
+
+function _overlayLayers() {
+  return [
+    _ov('overlays-companies',   ['==', ['slice', ['get', 'image'], 0, 8], 'company:'], _SZ_LG),
+    _ov('overlays-fuel',        ['==', ['get', 'image'], 'service:map_gas_ico']),
+    _ov('overlays-garage',      ['==', ['get', 'image'], 'service:map_garage_large_ico']),
+    _ov('overlays-repair',      ['==', ['get', 'image'], 'service:map_service_ico']),
+    _ov('overlays-recruitment', ['==', ['get', 'image'], 'service:map_recruitment_ico']),
+    _ov('overlays-dealer',      ['==', ['get', 'image'], 'service:map_dealer_ico']),
+    _ov('overlays-border',      ['==', ['get', 'image'], 'road:road_border_ico']),
+    _ov('overlays-toll',        ['==', ['get', 'image'], 'road:road_toll_ico']),
+    _ov('overlays-busstop',     ['==', ['get', 'image'], 'misc:busstop_bus_stop']),
+    _ov('overlays-road', ['all',
+      ['==', ['slice', ['get', 'image'], 0, 5], 'road:'],
+      ['!=', ['get', 'image'], 'road:road_border_ico'],
+      ['!=', ['get', 'image'], 'road:road_toll_ico'],
+    ]),
+    _ov('overlays-misc', ['all',
+      ['!=', ['slice', ['get', 'image'], 0, 8], 'company:'],
+      ['!=', ['slice', ['get', 'image'], 0, 5], 'road:'],
+      ['!=', ['get', 'image'], 'service:map_gas_ico'],
+      ['!=', ['get', 'image'], 'service:map_garage_large_ico'],
+      ['!=', ['get', 'image'], 'service:map_service_ico'],
+      ['!=', ['get', 'image'], 'service:map_recruitment_ico'],
+      ['!=', ['get', 'image'], 'service:map_dealer_ico'],
+      ['!=', ['get', 'image'], 'misc:busstop_bus_stop'],
+    ]),
+  ];
+}
+
+export const OVERLAY_LAYER_GROUPS = [
+  { id: 'overlays-companies',   label: 'Companies' },
+  { id: 'overlays-fuel',        label: 'Fuel Stations' },
+  { id: 'overlays-garage',      label: 'Garages' },
+  { id: 'overlays-repair',      label: 'Service Stations' },
+  { id: 'overlays-recruitment', label: 'Recruitment' },
+  { id: 'overlays-dealer',      label: 'Truck Dealers' },
+  { id: 'overlays-border',      label: 'Border Crossings' },
+  { id: 'overlays-toll',        label: 'Tollgates' },
+  { id: 'overlays-busstop',     label: 'Bus Stops' },
+  { id: 'overlays-road',        label: 'Road Signs' },
+  { id: 'overlays-misc',        label: 'Other' },
+  { id: 'city-labels',          label: 'City Names' },
+];
+
 export function createMapStyle(game) {
-  const baseUrl = import.meta.env.VITE_OVERLAY_IMAGES_BASE_URL || '/map_data'
+  const rawBase = import.meta.env.VITE_OVERLAY_IMAGES_BASE_URL || "/map_data";
+  const baseUrl = rawBase.startsWith('http') ? rawBase : `${window.location.origin}${rawBase}`;
   // Cache busting version - automatically set at build time
-  const spriteVersion = Date.now().toString()
-  
+  const spriteVersion = Date.now().toString();
+
   return {
     version: 8,
-    glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+    glyphs: "/font/{fontstack}/{range}.pbf",
     sprite: [
-      { id: 'company', url: `${baseUrl}/${game}/sprites/sprite-company?v=${spriteVersion}` },
-      { id: 'service', url: `${baseUrl}/${game}/sprites/sprite-service?v=${spriteVersion}` },
-      { id: 'road', url: `${baseUrl}/${game}/sprites/sprite-road?v=${spriteVersion}` },
-      { id: 'misc', url: `${baseUrl}/${game}/sprites/sprite-misc?v=${spriteVersion}` }
+      {
+        id: "company",
+        url: `${baseUrl}/${game}/sprites/sprite-company?v=${spriteVersion}`,
+      },
+      {
+        id: "service",
+        url: `${baseUrl}/${game}/sprites/sprite-service?v=${spriteVersion}`,
+      },
+      {
+        id: "road",
+        url: `${baseUrl}/${game}/sprites/sprite-road?v=${spriteVersion}`,
+      },
+      {
+        id: "misc",
+        url: `${baseUrl}/${game}/sprites/sprite-misc?v=${spriteVersion}`,
+      },
     ],
     sources: {
-      'map': {
-        type: 'vector',
-        tiles: [`${import.meta.env.VITE_VECTOR_TILES_BASE_URL || 'http://localhost:8080/data'}/${game}-vector/{z}/{x}/{y}.pbf`],
+      map: {
+        type: "vector",
+        tiles: [
+          `${import.meta.env.VITE_VECTOR_TILES_BASE_URL || "http://localhost:8080/data"}/${game}-vector/{z}/{x}/{y}.pbf`,
+        ],
         minzoom: 4,
-        maxzoom: 8
+        maxzoom: 8,
       },
-      'trucks': {
-        type: 'geojson',
+      trucks: {
+        type: "geojson",
         data: {
-          type: 'FeatureCollection',
-          features: []
-        }
-      }
+          type: "FeatureCollection",
+          features: [],
+        },
+      },
+      "graph-debug": {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      },
+      "route": {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      },
     },
     layers: [
       {
-        id: 'background',
-        type: 'background',
+        id: "background",
+        type: "background",
         paint: {
-          'background-color': '#1a1a1a'
-        }
-      },
-      {
-        id: 'prefab-flat',
-        type: 'fill',
-        source: 'map',
-        'source-layer': 'prefab_flat',
-        paint: {
-          'fill-color': ['get', 'color'],
-          'fill-opacity': 0.4
-        }
-      },
-      {
-        id: 'map-flat',
-        type: 'fill',
-        source: 'map',
-        'source-layer': 'map_flat',
-        paint: {
-          'fill-color': ['get', 'color'],
-          'fill-opacity': 0.4
-        }
-      },
-      {
-        id: 'roads',
-        type: 'fill',
-        source: 'map',
-        'source-layer': 'roads',
-        paint: {
-          'fill-color': '#FFC84C',
-          'fill-opacity': 1.0,
-          'fill-antialias': true,
+          "background-color": "#1A2733",
         },
       },
       {
-        id: 'prefab_roads',
-        type: 'fill',
-        source: 'map',
-        'source-layer': 'prefab_roads',
+        id: "prefab-flat",
+        type: "fill",
+        source: "map",
+        "source-layer": "prefab_flat",
         paint: {
-          'fill-color': '#FFC84C',
-          'fill-opacity': 1.0,
-          'fill-antialias': true,
-        }
+          "fill-color": ["get", "color"],
+          "fill-opacity": 0.4,
+        },
       },
       {
-        id: 'ferries',
-        type: 'line',
-        source: 'map',
-        'source-layer': 'ferries',
+        id: "map-flat",
+        type: "fill",
+        source: "map",
+        "source-layer": "map_flat",
         paint: {
-          'line-color': '#0099ff',
-          'line-width': [
-            'interpolate',
-            ['linear'],
-            ['zoom'],
-            4, 1,
-            6, 2,
-            8, 3,
-            10, 4
+          "fill-color": ["get", "color"],
+          "fill-opacity": 0.4,
+        },
+      },
+      {
+        id: "roads",
+        type: "fill",
+        source: "map",
+        "source-layer": "roads",
+        paint: {
+          "fill-color": "#C4924A",
+          "fill-opacity": 1.0,
+          "fill-antialias": true,
+        },
+      },
+      {
+        id: "prefab_roads",
+        type: "fill",
+        source: "map",
+        "source-layer": "prefab_roads",
+        paint: {
+          "fill-color": "#C4924A",
+          "fill-opacity": 1.0,
+          "fill-antialias": true,
+        },
+      },
+      {
+        id: "ferries",
+        type: "line",
+        source: "map",
+        "source-layer": "ferries",
+        paint: {
+          "line-color": "#4D7EA8",
+          "line-width": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            4,
+            1,
+            6,
+            2,
+            8,
+            3,
+            10,
+            4,
           ],
-          'line-dasharray': [2, 2]
-        }
+          "line-dasharray": [2, 2],
+        },
       },
       {
-        id: 'prefab-buildings',
-        type: 'fill-extrusion',
-        source: 'map',
-        'source-layer': 'prefab_buildings',
+        id: "prefab-buildings",
+        type: "fill-extrusion",
+        source: "map",
+        "source-layer": "prefab_buildings",
         paint: {
-          'fill-extrusion-color': ['get', 'color'],
-          'fill-extrusion-height': 400,
-          'fill-extrusion-base': 0,
-          'fill-extrusion-opacity': 1,
-        }
+          "fill-extrusion-color": "#2A3645",
+          "fill-extrusion-height": 400,
+          "fill-extrusion-base": 0,
+          "fill-extrusion-opacity": 0.55,
+        },
       },
       {
-        id: 'map-buildings',
-        type: 'fill-extrusion',
-        source: 'map',
-        'source-layer': 'map_buildings',
+        id: "map-buildings",
+        type: "fill-extrusion",
+        source: "map",
+        "source-layer": "map_buildings",
         paint: {
-          'fill-extrusion-color': ['get', 'color'],
-          'fill-extrusion-height': 400,
-          'fill-extrusion-base': 0,
-          'fill-extrusion-opacity': 1,
-        }
+          "fill-extrusion-color": "#2E3E50",
+          "fill-extrusion-height": 400,
+          "fill-extrusion-base": 0,
+          "fill-extrusion-opacity": 0.55,
+        },
       },
       {
-        id: 'overlays',
-        type: 'symbol',
-        source: 'map',
-        'source-layer': 'overlays',
-        layout: {
-          'icon-image': ['get', 'image'],
-          'icon-size': [
-            'interpolate',
-            ['linear'],
-            ['zoom'],
-            4, 0.08,
-            5, 0.10,
-            6, 0.12,
-            7, 0.15,
-            8, 0.4,
-            10, 0.75,
-            11, 1
-          ],
-          'icon-allow-overlap': true,
-          'icon-ignore-placement': true
-        }
+        id: "buildings",
+        type: "fill-extrusion",
+        source: "map",
+        "source-layer": "buildings",
+        paint: {
+          "fill-extrusion-color": "#354755",
+          "fill-extrusion-height": ["coalesce", ["get", "height"], 500],
+          "fill-extrusion-base": ["coalesce", ["get", "elevation"], 0],
+          "fill-extrusion-opacity": 0.55,
+        },
       },
+      ..._overlayLayers(),
       {
-        id: 'city-labels',
-        type: 'symbol',
-        source: 'map',
-        'source-layer': 'cities',
+        id: "city-labels",
+        type: "symbol",
+        source: "map",
+        "source-layer": "cities",
         minzoom: 5,
         layout: {
-          'text-field': ['get', 'localized_name'],
-          'text-size': [
-            'interpolate',
-            ['linear'],
-            ['zoom'],
-            5, 11,
-            6, 13,
-            8, 16,
-            10, 20
+          "text-field": ["get", "localized_name"],
+          "text-size": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            5,
+            11,
+            6,
+            13,
+            8,
+            16,
+            10,
+            20,
           ],
-          'text-anchor': 'top',
-          'text-offset': [0, 0.8],
-          'text-allow-overlap': true,
-          'text-ignore-placement': false
+          "text-anchor": "top",
+          "text-offset": [0, 0.8],
+          "text-allow-overlap": true,
+          "text-ignore-placement": false,
         },
         paint: {
-          'text-color': '#ffffff',
-          'text-halo-color': '#000000',
-          'text-halo-width': 2.5
-        }
+          "text-color": "#C0A882",
+          "text-halo-color": "#1A2733",
+          "text-halo-width": 2.5,
+        },
+      },
+      // ── Route display ─────────────────────────────────────────────────────
+      {
+        id: "route-line",
+        type: "line",
+        source: "route",
+        filter: ["==", "$type", "LineString"],
+        layout: {
+          "line-cap": "round",
+          "line-join": "round",
+        },
+        paint: {
+          "line-color": "#00D4FF",
+          "line-width": [
+            "interpolate", ["linear"], ["zoom"],
+            4, 2,
+            8, 3.5,
+            12, 5,
+          ],
+          "line-opacity": 0.92,
+        },
       },
       {
-        id: 'trucks',
-        type: 'circle',
-        source: 'trucks',
+        id: "route-markers",
+        type: "circle",
+        source: "route",
+        filter: ["==", "$type", "Point"],
         paint: {
-          'circle-radius': 5,
-          'circle-color': '#00ff00',
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#ffffff'
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 8, 10, 13],
+          "circle-color": ["coalesce", ["get", "color"], "#FF9900"],
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 2,
+          "circle-opacity": 1,
         },
-        minzoom: 7
-      }
-    ]
-  }
+      },
+      {
+        id: "route-marker-labels",
+        type: "symbol",
+        source: "route",
+        filter: ["==", "$type", "Point"],
+        layout: {
+          "text-field": ["get", "label"],
+          "text-size": 10,
+          "text-allow-overlap": true,
+          "text-ignore-placement": true,
+          "text-anchor": "center",
+        },
+        paint: {
+          "text-color": "#ffffff",
+          "text-halo-color": "rgba(0,0,0,0)",
+          "text-halo-width": 0,
+        },
+      },
+      // ── Graph debug overlay (toggle via DebugToggle control) ──────────────
+      {
+        id: "graph-debug-edges",
+        type: "line",
+        source: "graph-debug",
+        filter: ["==", ["get", "featureType"], "edge"],
+        paint: {
+          "line-color": [
+            "match", ["get", "itemType"],
+            "road",           "#4A90D9",
+            "prefab",         "#FF2222",
+            "ferry",          "#9B59B6",
+            "ferry_approach", "#27AE60",
+            "#999999",
+          ],
+          "line-width": [
+            "interpolate", ["linear"], ["zoom"],
+            9,  ["case", ["==", ["get", "speedClass"], "freeway"], 1.5, 1.2],
+            13, ["case", ["==", ["get", "speedClass"], "freeway"], 2.5, 1.5],
+          ],
+          "line-opacity": 0.85,
+        },
+      },
+      {
+        id: "graph-debug-arrows",
+        type: "symbol",
+        source: "graph-debug",
+        filter: ["==", ["get", "featureType"], "arrow"],
+        layout: {
+          "icon-image": "route-arrow",
+          "icon-rotate": ["get", "bearing"],
+          "icon-rotation-alignment": "map",
+          "icon-allow-overlap": true,
+          "icon-size": 0.8,
+        },
+        paint: {
+          "icon-color": [
+            "match", ["get", "itemType"],
+            "road",           "#4A90D9",
+            "prefab",         "#FF2222",
+            "ferry",          "#9B59B6",
+            "ferry_approach", "#27AE60",
+            "#999999",
+          ],
+          "icon-opacity": 0.9,
+        },
+      },
+      {
+        id: "graph-debug-nodes",
+        type: "circle",
+        source: "graph-debug",
+        filter: ["==", ["get", "featureType"], "node"],
+        paint: {
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 9, 1.5, 12, 4],
+          "circle-color": "#FFFFFF",
+          "circle-stroke-color": "#333333",
+          "circle-stroke-width": 1,
+          "circle-opacity": 0.9,
+        },
+      },
+      // ── Live truck markers ─────────────────────────────────────────────────
+      {
+        id: "trucks",
+        type: "circle",
+        source: "trucks",
+        paint: {
+          "circle-radius": 5,
+          "circle-color": "#00ff00",
+          "circle-stroke-width": 2,
+          "circle-stroke-color": "#ffffff",
+        },
+        minzoom: 7,
+      },
+    ],
+  };
 }

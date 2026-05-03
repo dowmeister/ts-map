@@ -15,6 +15,8 @@ namespace TsMap.TsItem
         private ulong _companyNameToken;
         private ulong _prefabUid;
 
+        public string CompanyDefId => ScsToken.TokenToString(_companyNameToken);
+
         public TsCompanyItem(TsSector sector, int startOffset) : base(sector, startOffset)
         {
             Valid = true;

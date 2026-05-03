@@ -15,6 +15,7 @@ namespace TsMap.TsItem
         private List<PointF> _points;
 
         public bool IsSecret { get; private set; }
+        public bool GpsAvoid { get; private set; }
 
         public void AddPoints(List<PointF> points)
         {
@@ -54,6 +55,7 @@ namespace TsMap.TsItem
             var fileOffset = startOffset + 0x34; // Set position at start of flags
             DlcGuard = MemoryHelper.ReadUint8(Sector.Stream, fileOffset + 0x06);
             Hidden = (MemoryHelper.ReadUint8(Sector.Stream, fileOffset + 0x03) & 0x02) != 0;
+            GpsAvoid = MemoryHelper.IsBitSet(MemoryHelper.ReadUint8(Sector.Stream, fileOffset + 0x09), 4);
             var roadLookId = MemoryHelper.ReadUInt64(Sector.Stream, fileOffset += 0x09); // 0x09(flags)
             RoadLook = Sector.Mapper.LookupRoadLook(roadLookId);
 
@@ -75,6 +77,7 @@ namespace TsMap.TsItem
             var fileOffset = startOffset + 0x34; // Set position at start of flags
             DlcGuard = MemoryHelper.ReadUint8(Sector.Stream, fileOffset + 0x06);
             Hidden = (MemoryHelper.ReadUint8(Sector.Stream, fileOffset + 0x03) & 0x02) != 0;
+            GpsAvoid = MemoryHelper.IsBitSet(MemoryHelper.ReadUint8(Sector.Stream, fileOffset + 0x09), 4);
             var roadLookId = MemoryHelper.ReadUInt64(Sector.Stream, fileOffset += 0x09); // 0x09(flags)
             RoadLook = Sector.Mapper.LookupRoadLook(roadLookId);
 
@@ -96,6 +99,7 @@ namespace TsMap.TsItem
             var fileOffset = startOffset + 0x34; // Set position at start of flags
             DlcGuard = MemoryHelper.ReadUint8(Sector.Stream, fileOffset + 0x06);
             Hidden = (MemoryHelper.ReadUint8(Sector.Stream, fileOffset + 0x03) & 0x02) != 0;
+            GpsAvoid = MemoryHelper.IsBitSet(MemoryHelper.ReadUint8(Sector.Stream, fileOffset + 0x09), 4);
             var roadLookId = MemoryHelper.ReadUInt64(Sector.Stream, fileOffset += 0x09);
             RoadLook = Sector.Mapper.LookupRoadLook(roadLookId); // 0x09(flags)
             if (RoadLook == null)
@@ -117,6 +121,7 @@ namespace TsMap.TsItem
             DlcGuard = MemoryHelper.ReadUint8(Sector.Stream, fileOffset + 0x06);
             Hidden = (MemoryHelper.ReadUint8(Sector.Stream, fileOffset + 0x03) & 0x02) != 0;
             IsSecret = MemoryHelper.IsBitSet(MemoryHelper.ReadUint8(Sector.Stream, fileOffset + 2), 0);
+            GpsAvoid = MemoryHelper.IsBitSet(MemoryHelper.ReadUint8(Sector.Stream, fileOffset + 0x09), 4);
             var roadLookId = MemoryHelper.ReadUInt64(Sector.Stream, fileOffset += 0x09); // 0x09(flags)
             RoadLook = Sector.Mapper.LookupRoadLook(roadLookId);
 
@@ -140,6 +145,7 @@ namespace TsMap.TsItem
             DlcGuard = MemoryHelper.ReadUint8(Sector.Stream, fileOffset + 0x06);
             Hidden = (MemoryHelper.ReadUint8(Sector.Stream, fileOffset + 0x03) & 0x02) != 0;
             IsSecret = MemoryHelper.IsBitSet(MemoryHelper.ReadUint8(Sector.Stream, fileOffset + 2), 0);
+            GpsAvoid = MemoryHelper.IsBitSet(MemoryHelper.ReadUint8(Sector.Stream, fileOffset + 0x09), 4);
             var roadLookId = MemoryHelper.ReadUInt64(Sector.Stream, fileOffset += 0x09); // 0x09(flags)
             RoadLook = Sector.Mapper.LookupRoadLook(roadLookId);
 

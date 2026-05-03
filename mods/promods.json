@@ -1,16 +1,21 @@
 {
   "mods": [
-    "promods-tgs-defmap-v150.scs",
-    "promods-tgs-assets-v150.scs",
-    "promods-me-defmap-v277.scs",
-    "promods-me-assets-v277.scs",
-    "promods-eu-model3-v280.scs",
-    "promods-eu-model2-v280.scs",
-    "promods-eu-model1-v280.scs",
-    "promods-eu-media-v280.scs",
-    "promods-eu-map-v280.scs",
-    "promods-eu-dlcsupport-v280.zip",
-    "promods-eu-def-v280.scs",
-    "promods-eu-assets-v280.scs"
+    "cnx-pm-eu-v281-ma-v101.scs",
+    "promods-ma-defmap-v101.scs",
+    "promods-ma-assets-v101.scs",
+    "promods-ma-models-v101.scs",
+    "promods-tgs-defmap-v160.scs",
+    "promods-tgs-assets-v160.scs",
+    "promods-me-defmap-v281.scs",
+    "promods-me-assets-v281.scs",
+    "promods-eu-def-v281.scs",
+    "promods-eu-map-v281.scs",
+    "promods-eu-assets-v281.scs",
+    "promods-eu-model1-v281.scs",
+    "promods-eu-model2-v281.scs",
+    "promods-eu-model3-v281.scs",
+    "promods-eu-media-v281.scs",
+    "promods-tgs-defmap-v160.scs",
+    "promods-tgs-assets-v160.scs"
   ]
 }

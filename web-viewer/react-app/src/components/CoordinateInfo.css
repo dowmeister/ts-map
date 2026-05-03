@@ -3,26 +3,26 @@
   bottom: 10px;
   left: 10px;
   z-index: 1000;
-  background: rgba(0, 0, 0, 0.85);
-  color: #ffffff;
-  padding: 12px 15px;
-  border-radius: 8px;
-  font-family: 'Courier New', monospace;
+  background: rgba(18, 18, 18, 0.92);
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 8px 12px;
+  backdrop-filter: blur(4px);
+  font-family: monospace;
   font-size: 12px;
   line-height: 1.6;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
   max-width: 400px;
 }
 
 .coord-info .label {
-  color: #00d4ff;
+  color: #00D4FF;
   font-weight: bold;
 }
 
 .coord-info .value {
-  color: #ffffff;
+  color: #ccc;
 }
 
 .coord-info div {
-  margin: 2px 0;
+  margin: 1px 0;
 }

@@ -9,7 +9,7 @@ export function useTileMapInfo(game) {
         const baseUrl = import.meta.env.VITE_OVERLAY_IMAGES_BASE_URL || '/map_data'
         const response = await fetch(`${baseUrl}/${game}/VectorTileMapInfo.json`)
         const data = await response.json()
-        setTileMapInfo(data)
+        setTileMapInfo({ ...data, game })
       } catch (error) {
         console.error('Error loading VectorTileMapInfo:', error)
       }

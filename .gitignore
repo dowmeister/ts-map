@@ -273,3 +273,14 @@ __pycache__/
 rclone.conf
 upload-overlay-images.sh
 web-viewer/react-app/public/map_data
+
+.claude
+
+routing-service/server.log
+routing-service/server.err
+
+GRAPH_DEBUG_RESULTS.md
+PHASE1_RESULTS.md
+PHASE2_RESULTS.md
+PHASE3_RESULTS.md
+PHASE4_RESULTS.md

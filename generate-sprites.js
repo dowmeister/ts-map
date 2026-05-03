@@ -175,16 +175,29 @@ async function main() {
     try {
       // Generate sprites for each group
       for (const [group, images] of Object.entries(groups)) {
-        if (images.length === 0) continue;
-        
-        console.log(`  • ${group}: ${images.length} images`);
-        
-        // Generate 1x sprite
         const spritePath = path.join(outputDir, `sprite-${group}`);
-        await generateSprite(images, overlayDir, spritePath, 1);
-        
-        // Generate 2x sprite for retina
         const sprite2xPath = path.join(outputDir, `sprite-${group}@2x`);
+
+        if (images.length === 0) {
+          // Write empty sprite files so the map style doesn't get 404s
+          fs.writeFileSync(spritePath + '.json', '{}');
+          fs.writeFileSync(sprite2xPath + '.json', '{}');
+          // Minimal 1×1 transparent PNG
+          const emptyPng = await sharp({
+            create: { width: 1, height: 1, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } }
+          }).png().toBuffer();
+          fs.writeFileSync(spritePath + '.png', emptyPng);
+          fs.writeFileSync(sprite2xPath + '.png', emptyPng);
+          console.log(`  • ${group}: 0 images (empty sprite written)`);
+          continue;
+        }
+
+        console.log(`  • ${group}: ${images.length} images`);
+
+        // Generate 1x sprite
+        await generateSprite(images, overlayDir, spritePath, 1);
+
+        // Generate 2x sprite for retina
         await generateSprite(images, overlayDir, sprite2xPath, 2);
       }
 

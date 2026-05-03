@@ -1,0 +1,28 @@
+# Stage 1 — compile TypeScript (needs devDeps for tsc)
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+COPY routing-service/package*.json ./
+RUN npm ci
+
+COPY routing-service/tsconfig.json ./
+COPY routing-service/src ./src
+RUN npm run build
+
+# Stage 2 — production image (no devDeps, no source)
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY routing-service/package*.json ./
+RUN npm ci --omit=dev
+
+COPY --from=builder /app/dist ./dist
+
+EXPOSE 3001
+
+ENV MAP_DATA_PATH=/data
+ENV PORT=3001
+
+CMD ["node", "dist/server.js"]

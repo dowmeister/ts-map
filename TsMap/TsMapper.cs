@@ -52,6 +52,9 @@ namespace TsMap
 
         public readonly Dictionary<ulong, TsNode> Nodes = new Dictionary<ulong, TsNode>();
 
+        // All map items by UID — O(1) ForwardItem/BackwardItem resolution
+        public readonly Dictionary<ulong, TsItem.TsItem> Items = new Dictionary<ulong, TsItem.TsItem>();
+
         public float minX = float.MaxValue;
         public float maxX = float.MinValue;
         public float minZ = float.MaxValue;
@@ -436,6 +439,14 @@ namespace TsMap
             Sectors.ForEach(sec => sec.ClearFileData());
             Logger.Instance.Info($"It took {(DateTime.Now.Ticks - preMapParseTime) / TimeSpan.TicksPerMillisecond} ms to parse all (*.base) files");
 
+            // Populate Items dict then SetForwardBackward
+            foreach (var item in MapItems) Items[item.Uid] = item;
+            foreach (var node in Nodes)
+            {
+                if (Items.TryGetValue(node.Value.ForwardItemUID,  out var fwd)) node.Value.ForwardItem  = fwd;
+                if (Items.TryGetValue(node.Value.BackwardItemUID, out var bwd)) node.Value.BackwardItem = bwd;
+            }
+
             foreach (var mapItem in MapItems)
             {
                 mapItem.Update();
@@ -630,6 +641,11 @@ namespace TsMap
         public TsPrefab LookupPrefab(ulong prefabId)
         {
             return _prefabLookup.ContainsKey(prefabId) ? _prefabLookup[prefabId] : null;
+        }
+
+        public TsPrefab GetPrefabDescriptor(ulong prefabId)
+        {
+            return LookupPrefab(prefabId);
         }
 
         public TsCity LookupCity(ulong cityId)

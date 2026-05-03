@@ -1,0 +1,70 @@
+.lt {
+  position: absolute;
+  bottom: 45px;
+  right: 10px;
+  z-index: 1000;
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.lt__header {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(20, 20, 20, 0.85);
+  border: 1px solid #555;
+  border-radius: 4px;
+  color: #ccc;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  letter-spacing: 0.03em;
+}
+
+.lt__header:hover { color: #fff; border-color: #888; }
+
+.lt__arrow { font-size: 9px; opacity: 0.6; }
+
+.lt__panel {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: 4px;
+  min-width: 160px;
+  background: rgba(20, 20, 20, 0.92);
+  border: 1px solid #555;
+  border-radius: 4px;
+  padding: 6px 0;
+  backdrop-filter: blur(4px);
+}
+
+.lt__row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 10px;
+  cursor: pointer;
+  user-select: none;
+  color: #bbb;
+  white-space: nowrap;
+}
+
+.lt__row:hover { color: #fff; background: rgba(255,255,255,0.04); }
+
+.lt__row input[type="checkbox"] {
+  width: 13px;
+  height: 13px;
+  cursor: pointer;
+  accent-color: #4A90D9;
+  flex-shrink: 0;
+}
+
+.lt__row--all { color: #ddd; font-weight: bold; }
+
+.lt__divider {
+  height: 1px;
+  background: #444;
+  margin: 4px 0;
+}

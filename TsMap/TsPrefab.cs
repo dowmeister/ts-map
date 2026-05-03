@@ -14,6 +14,8 @@ namespace TsMap
         public float RotX;
         public float RotZ;
         public int LaneCount;
+        public List<int> InputPoints;   // NavCurve indices that depart from this control node
+        public List<int> OutputPoints;  // NavCurve indices that arrive at this control node
     }
 
     public struct TsMapPoint
@@ -46,9 +48,25 @@ namespace TsMap
         public float Z;
     }
 
+    public struct TsNavCurve
+    {
+        public int Index;
+        public byte StartNodeIndex;   // leadsToNodes.startNode @ +0x0E
+        public byte EndNodeIndex;     // leadsToNodes.endNode   @ +0x0C
+        public float StartX, StartZ;  // local PPD start position @ +0x10, +0x18
+        public float EndX,   EndZ;    // local PPD end position   @ +0x1C, +0x24
+        public float Length;          // m_length               @ +0x48
+        public byte AllowedVehicles;  // flags bits 5-6 @ +0x08 (0=PlayerOnly,1=SmallVehicles,2=LargeVehicles,3=AllVehicles)
+        public bool GpsAvoid;
+        public byte SpeedClass;
+        public int[] NextLines;       // m_next_lines[4] @ +0x4C, count @ +0x6C
+        public int[] PreviousLines;   // m_prev_lines[4] @ +0x5C, count @ +0x70
+    }
+
     public class TsPrefab
     {
         private const int NodeBlockSize = 0x68;
+        private const int NavCurveBlockSize = 0x84;
         private const int MapPointBlockSize = 0x30;
         private const int SpawnPointBlockSize = 0x20;
         private const int SpawnPointV24BlockSize = 0x24;
@@ -66,6 +84,7 @@ namespace TsMap
         public List<TsSpawnPoint> SpawnPoints { get; private set; }
         public List<TsMapPoint> MapPoints { get; private set; }
         public List<TsTriggerPoint> TriggerPoints { get; private set; }
+        public List<TsNavCurve> NavCurves { get; private set; }
 
         public TsPrefab(string filePath, ulong token, string category)
         {
@@ -85,6 +104,7 @@ namespace TsMap
         private void Parse()
         {
             PrefabNodes = new List<TsPrefabNode>();
+            NavCurves = new List<TsNavCurve>();
             SpawnPoints = new List<TsSpawnPoint>();
             MapPoints = new List<TsMapPoint>();
             TriggerPoints = new List<TsTriggerPoint>();
@@ -109,7 +129,8 @@ namespace TsMap
             if (version > 0x15) fileOffset += 0x04; // http://modding.scssoft.com/wiki/Games/ETS2/Modding_guides/1.30#Prefabs
 
             var nodeOffset = MemoryHelper.ReadInt32(_stream, fileOffset += 0x08);
-            var spawnPointOffset = MemoryHelper.ReadInt32(_stream, fileOffset += 0x10);
+            var curveOffset = MemoryHelper.ReadInt32(_stream, fileOffset += 0x04);
+            var spawnPointOffset = MemoryHelper.ReadInt32(_stream, fileOffset += 0x0C);
             var mapPointOffset = MemoryHelper.ReadInt32(_stream, fileOffset += 0x10);
             var triggerPointOffset = MemoryHelper.ReadInt32(_stream, fileOffset += 0x04);
 
@@ -126,19 +147,53 @@ namespace TsMap
                 };
 
                 int laneCount = 0;
-                var nodeFileOffset = nodeBaseOffset + 0x24;
+                var inputPoints  = new List<int>();
+                var outputPoints = new List<int>();
                 for (var j = 0; j < 8; j++)
                 {
-                    if (MemoryHelper.ReadInt32(_stream, nodeFileOffset += 0x04) != -1) laneCount++;
+                    var v = MemoryHelper.ReadInt32(_stream, nodeBaseOffset + 0x28 + j * 4);
+                    if (v != -1) { laneCount++; inputPoints.Add(v); }
                 }
-
                 for (var j = 0; j < 8; j++)
                 {
-                    if (MemoryHelper.ReadInt32(_stream, nodeFileOffset += 0x04) != -1) laneCount++;
+                    var v = MemoryHelper.ReadInt32(_stream, nodeBaseOffset + 0x48 + j * 4);
+                    if (v != -1) { laneCount++; outputPoints.Add(v); }
                 }
-                node.LaneCount = laneCount;
+                node.LaneCount    = laneCount;
+                node.InputPoints  = inputPoints;
+                node.OutputPoints = outputPoints;
 
                 PrefabNodes.Add(node);
+            }
+
+            for (var i = 0; i < navCurveCount; i++)
+            {
+                var cb = curveOffset + i * NavCurveBlockSize;
+                var flags = MemoryHelper.ReadUInt32(_stream, cb + 0x08);
+                var countNext = MemoryHelper.ReadInt32(_stream, cb + 0x6C);
+                var nextLines = new int[countNext];
+                for (var j = 0; j < countNext; j++)
+                    nextLines[j] = MemoryHelper.ReadInt32(_stream, cb + 0x4C + j * 4);
+                var countPrev = MemoryHelper.ReadInt32(_stream, cb + 0x70);
+                var prevLines = new int[countPrev];
+                for (var j = 0; j < countPrev; j++)
+                    prevLines[j] = MemoryHelper.ReadInt32(_stream, cb + 0x5C + j * 4);
+                NavCurves.Add(new TsNavCurve
+                {
+                    Index           = i,
+                    StartNodeIndex  = _stream[cb + 0x0E],
+                    EndNodeIndex    = _stream[cb + 0x0C],
+                    StartX          = MemoryHelper.ReadSingle(_stream, cb + 0x10),
+                    StartZ          = MemoryHelper.ReadSingle(_stream, cb + 0x18),
+                    EndX            = MemoryHelper.ReadSingle(_stream, cb + 0x1C),
+                    EndZ            = MemoryHelper.ReadSingle(_stream, cb + 0x24),
+                    Length          = MemoryHelper.ReadSingle(_stream, cb + 0x48),
+                    AllowedVehicles = (byte)((flags >> 5) & 0x3),
+                    GpsAvoid        = false,
+                    SpeedClass      = 0,
+                    NextLines       = nextLines,
+                    PreviousLines   = prevLines,
+                });
             }
 
             var spawnPointBlockSize = version >= 24 ? SpawnPointV24BlockSize : SpawnPointBlockSize;

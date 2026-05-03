@@ -8,6 +8,9 @@
     }, 
     "promods-vector": {
       "mbtiles": "promods.mbtiles"
+    },
+    "gu-vector": {
+      "mbtiles": "gu.mbtiles"
     }
   }
 }
