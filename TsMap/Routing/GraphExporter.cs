@@ -58,12 +58,13 @@ namespace TsMap.Routing
                 foreach (var edge in _graph.Edges)
                 {
                     jw.WriteStartObject();
-                    jw.WritePropertyName("from");       jw.WriteValue(edge.From.ToString());
-                    jw.WritePropertyName("to");         jw.WriteValue(edge.To.ToString());
-                    jw.WritePropertyName("weight");     jw.WriteValue(Math.Round(edge.Weight, 2));
-                    jw.WritePropertyName("length");     jw.WriteValue(Math.Round(edge.Length, 2));
-                    jw.WritePropertyName("speedClass"); jw.WriteValue(edge.SpeedClass);
-                    jw.WritePropertyName("itemType");   jw.WriteValue(edge.ItemType);
+                    jw.WritePropertyName("from");          jw.WriteValue(edge.From.ToString());
+                    jw.WritePropertyName("to");            jw.WriteValue(edge.To.ToString());
+                    jw.WritePropertyName("weight");        jw.WriteValue(Math.Round(edge.Weight, 2));
+                    jw.WritePropertyName("length");        jw.WriteValue(Math.Round(edge.Length, 2));
+                    jw.WritePropertyName("speedClass");    jw.WriteValue(edge.SpeedClass);
+                    jw.WritePropertyName("speedLimitKph"); jw.WriteValue(edge.SpeedLimitKph);
+                    jw.WritePropertyName("itemType");      jw.WriteValue(edge.ItemType);
                     jw.WriteEndObject();
                 }
                 jw.WriteEndArray();

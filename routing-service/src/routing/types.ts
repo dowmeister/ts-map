@@ -10,6 +10,7 @@ export interface GraphEdge {
   weight: number;
   length: number;
   speedClass: string;
+  speedLimitKph?: number;
   itemType: string;
 }
 

@@ -13,11 +13,15 @@ namespace TsMap.Routing
         // Road-only node UIDs — used by ProcessCompanies to avoid connecting to other isolated company nodes
         private readonly HashSet<ulong> _roadNodeUids = new HashSet<ulong>();
 
-        // Weight multipliers per speed class
-        private const float MultFreeway   = 1.0f;
-        private const float MultLocalRoad = 1.6f;
-        private const float GpsAvoidMult  = 50f;
-        private const float FerryWeight   = 50000f;
+        // Reference speed (fastest class) used to normalise weights so freeway mult = 1.0.
+        // All multipliers are computed as MaxSpeedKph / speedKph so the A* heuristic
+        // (raw Euclidean distance) stays admissible: min possible weight == length * 1.0.
+        private const float MaxSpeedKph  = 130f;
+        private const float GpsAvoidMult = 50f;
+        private const float FerryWeight  = 50000f;
+
+        private static float SpeedMult(string speedClass) =>
+            MaxSpeedKph / GraphEdge.SpeedClassToKph(speedClass);
 
         public RoutingGraphBuilder(TsMapper mapper)
         {
@@ -55,7 +59,7 @@ namespace TsMap.Routing
                 if (len < 0.001f) continue;
 
                 string sc   = RoadSpeedClass(road.RoadLook);
-                float  mult = sc == "freeway" ? MultFreeway : MultLocalRoad;
+                float  mult = SpeedMult(sc);
                 if (road.GpsAvoid) mult *= GpsAvoidMult;
 
                 // Build Hermite spline waypoints for the debug overlay.
@@ -223,7 +227,7 @@ namespace TsMap.Routing
                                         RegisterNode(toNode);
                                         _graph.Edges.Add(new GraphEdge(
                                             fromUid, toUid,
-                                            len * MultLocalRoad, len, "local_road", "prefab",
+                                            len * SpeedMult("local_road"), len, "local_road", "prefab",
                                             waypoints));
                                         edgesAdded++;
                                         nodesWithOutEdge.Add(fromPpdIdx);
@@ -279,7 +283,7 @@ namespace TsMap.Routing
                             RegisterNode(toNode);
                             _graph.Edges.Add(new GraphEdge(
                                 fromUid, toUid,
-                                len * MultLocalRoad, len, "local_road", "prefab"));
+                                len * SpeedMult("local_road"), len, "local_road", "prefab"));
                         }
                     }
                 }
@@ -460,7 +464,7 @@ namespace TsMap.Routing
                     RegisterNode(toNode);
                     _graph.Edges.Add(new GraphEdge(
                         fromNode.Uid, toNode.Uid,
-                        len * MultLocalRoad, len, "local_road", "prefab"));
+                        len * SpeedMult("local_road"), len, "local_road", "prefab"));
                 }
             }
         }
@@ -493,8 +497,8 @@ namespace TsMap.Routing
                 if (len < 0.001f) continue;
 
                 RegisterNode(portNode);
-                _graph.Edges.Add(new GraphEdge(nearest.Uid, kv.Value, len * MultLocalRoad, len, "local_road", "ferry_approach"));
-                _graph.Edges.Add(new GraphEdge(kv.Value, nearest.Uid, len * MultLocalRoad, len, "local_road", "ferry_approach"));
+                _graph.Edges.Add(new GraphEdge(nearest.Uid, kv.Value, len * SpeedMult("local_road"), len, "local_road", "ferry_approach"));
+                _graph.Edges.Add(new GraphEdge(kv.Value, nearest.Uid, len * SpeedMult("local_road"), len, "local_road", "ferry_approach"));
             }
 
             // Canonical (min,max) pair prevents processing the same route twice
@@ -563,8 +567,8 @@ namespace TsMap.Routing
 
                     RegisterNode(compNode);
                     // Bidirectional: trucks can enter and exit the company
-                    _graph.Edges.Add(new GraphEdge(nearest.Uid, nodeUid, len * MultLocalRoad, len, "local_road", "company_approach"));
-                    _graph.Edges.Add(new GraphEdge(nodeUid, nearest.Uid, len * MultLocalRoad, len, "local_road", "company_approach"));
+                    _graph.Edges.Add(new GraphEdge(nearest.Uid, nodeUid, len * SpeedMult("local_road"), len, "local_road", "company_approach"));
+                    _graph.Edges.Add(new GraphEdge(nodeUid, nearest.Uid, len * SpeedMult("local_road"), len, "local_road", "company_approach"));
                 }
             }
         }
@@ -676,16 +680,31 @@ namespace TsMap.Routing
 
         private static string RoadSpeedClass(TsRoadLook look)
         {
-            // First lane containing "freeway" (case-insensitive) → "freeway", otherwise → "local_road"
+            // Check all lane names for speed class keywords (matches truckermudgeon getLaneSpeedClass).
+            // Priority order: motorway/freeway (130) > expressway (110) > divided (100) > slow (50) > local (90).
             foreach (var lane in look.LanesLeft)
-                if (lane != null &&
-                    lane.IndexOf("freeway", StringComparison.OrdinalIgnoreCase) >= 0)
-                    return "freeway";
+            {
+                var c = LaneSpeedClass(lane);
+                if (c != null) return c;
+            }
             foreach (var lane in look.LanesRight)
-                if (lane != null &&
-                    lane.IndexOf("freeway", StringComparison.OrdinalIgnoreCase) >= 0)
-                    return "freeway";
+            {
+                var c = LaneSpeedClass(lane);
+                if (c != null) return c;
+            }
             return "local_road";
+        }
+
+        private static string LaneSpeedClass(string lane)
+        {
+            if (lane == null) return null;
+            if (lane.IndexOf("motorway",   StringComparison.OrdinalIgnoreCase) >= 0) return "motorway";
+            if (lane.IndexOf("freeway",    StringComparison.OrdinalIgnoreCase) >= 0) return "freeway";
+            if (lane.IndexOf("expressway", StringComparison.OrdinalIgnoreCase) >= 0) return "expressway";
+            if (lane.IndexOf("divided",    StringComparison.OrdinalIgnoreCase) >= 0) return "divided";
+            if (lane.IndexOf("slow_road",  StringComparison.OrdinalIgnoreCase) >= 0) return "slow_road";
+            if (lane.IndexOf("slow road",  StringComparison.OrdinalIgnoreCase) >= 0) return "slow_road";
+            return null;
         }
     }
 }

@@ -47,6 +47,7 @@ export const OVERLAY_LAYER_GROUPS = [
   { id: 'overlays-busstop',     label: 'Bus Stops' },
   { id: 'overlays-road',        label: 'Road Signs' },
   { id: 'overlays-misc',        label: 'Other' },
+  { id: 'speed-cameras',        label: 'Speed Cameras' },
   { id: 'city-labels',          label: 'City Names' },
 ];
 
@@ -136,7 +137,11 @@ export function createMapStyle(game) {
         source: "map",
         "source-layer": "roads",
         paint: {
-          "fill-color": "#C4924A",
+          "fill-color": ["match", ["get", "road_class"],
+            "highway", "#D4A017",
+            "normal",  "#8A9BAD",
+            /* local */ "#6B7280"
+          ],
           "fill-opacity": 1.0,
           "fill-antialias": true,
         },
@@ -147,7 +152,11 @@ export function createMapStyle(game) {
         source: "map",
         "source-layer": "prefab_roads",
         paint: {
-          "fill-color": "#C4924A",
+          "fill-color": ["match", ["get", "road_class"],
+            "highway", "#D4A017",
+            "normal",  "#8A9BAD",
+            /* local */ "#6B7280"
+          ],
           "fill-opacity": 1.0,
           "fill-antialias": true,
         },
@@ -182,8 +191,8 @@ export function createMapStyle(game) {
         "source-layer": "prefab_buildings",
         paint: {
           "fill-extrusion-color": "#2A3645",
-          "fill-extrusion-height": 400,
-          "fill-extrusion-base": 0,
+          "fill-extrusion-height": ["coalesce", ["get", "height"], 400],
+          "fill-extrusion-base":   ["coalesce", ["get", "elevation"], 0],
           "fill-extrusion-opacity": 0.55,
         },
       },
@@ -194,9 +203,10 @@ export function createMapStyle(game) {
         "source-layer": "map_buildings",
         paint: {
           "fill-extrusion-color": "#2E3E50",
-          "fill-extrusion-height": 400,
-          "fill-extrusion-base": 0,
+          "fill-extrusion-height": ["coalesce", ["get", "height"], 400],
+          "fill-extrusion-base":   ["coalesce", ["get", "elevation"], 0],
           "fill-extrusion-opacity": 0.55,
+          "fill-extrusion-vertical-gradient": false,
         },
       },
       {
@@ -353,6 +363,21 @@ export function createMapStyle(game) {
           "circle-color": "#FFFFFF",
           "circle-stroke-color": "#333333",
           "circle-stroke-width": 1,
+          "circle-opacity": 0.9,
+        },
+      },
+      // ── Speed camera markers ───────────────────────────────────────────────
+      {
+        id: "speed-cameras",
+        type: "circle",
+        source: "map",
+        "source-layer": "speed_cameras",
+        minzoom: 7,
+        paint: {
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 7, 4, 10, 7],
+          "circle-color": "#FF3300",
+          "circle-stroke-width": 1.5,
+          "circle-stroke-color": "#ffffff",
           "circle-opacity": 0.9,
         },
       },
