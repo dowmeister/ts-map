@@ -121,6 +121,10 @@
     <Compile Include="TsItem\TsBuildingItem.cs" />
     <Compile Include="TsItem\TsCompanyDef.cs" />
     <Compile Include="TsItem\TsCurveItem.cs" />
+    <Compile Include="TsItem\TsCompoundItem.cs" />
+    <Compile Include="TsItem\TsMoverItem.cs" />
+    <Compile Include="TsItem\TsNoWeatherItem.cs" />
+    <Compile Include="TsItem\TsSkipItems.cs" />
     <Compile Include="TsItem\TsModelItem.cs" />
     <Compile Include="TsItem\TsBusStopItem.cs" />
     <Compile Include="TsItem\TsCargoDef.cs" />
@@ -147,6 +151,7 @@
     <Compile Include="TsTypes.cs" />
     <Compile Include="TsMapper.cs" />
     <Compile Include="TsMapRenderer.cs" />
+    <Compile Include="TsModelDescription.cs" />
     <Compile Include="TsNode.cs" />
     <Compile Include="TsPrefab.cs" />
     <Compile Include="TsPrefabLook.cs" />

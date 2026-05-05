@@ -267,6 +267,8 @@ __pycache__/
 /mbtiles/*.mbtiles
 /mbtiles/*.mbtiles-journal
 
+/pmtiles/*.pmtiles
+
 /web-viewer/map_data/**/*
 
 .env

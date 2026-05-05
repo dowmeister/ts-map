@@ -77,6 +77,7 @@ namespace TsMap
                         item = new TsRoadItem(this, lastOffset);
                         lastOffset += item.BlockSize;
                         if (item.Valid && !item.Hidden) Mapper.Roads.Add((TsRoadItem) item);
+                        else if (item.Valid && item.Hidden) Mapper.HiddenRoads.Add((TsRoadItem) item);
                         break;
                     }
                     case TsItemType.Prefab:
@@ -84,12 +85,33 @@ namespace TsMap
                         item = new TsPrefabItem(this, lastOffset);
                         lastOffset += item.BlockSize;
                         if (item.Valid && !item.Hidden) Mapper.Prefabs.Add((TsPrefabItem) item);
+                        else if (item.Valid && item.Hidden) Mapper.HiddenPrefabs.Add((TsPrefabItem) item);
                         break;
                     }
                     case TsItemType.Model: // used to all be in .aux files, not sure why some are now in .base files
                     {
                         item = new TsModelItem(this, lastOffset);
                         lastOffset += item.BlockSize;
+                        if (item.Valid) Mapper.Models.Add((TsModelItem)item);
+                        break;
+                    }
+                    case TsItemType.Compound:
+                    {
+                        item = new TsCompoundItem(this, lastOffset);
+                        if (item.BlockSize <= 0)
+                        {
+                            Logger.Instance.Warning($"Compound BlockSize=0 in {Path.GetFileName(FilePath)} @ {lastOffset}, aborting sector");
+                            return;
+                        }
+                        lastOffset += item.BlockSize;
+                        if (item.Valid)
+                        {
+                            var compound = (TsCompoundItem)item;
+                            Mapper.Models.AddRange(compound.ChildModels);
+                            foreach (var node in compound.ChildNodes)
+                                if (!Mapper.Nodes.ContainsKey(node.Uid))
+                                    Mapper.Nodes.Add(node.Uid, node);
+                        }
                         break;
                     }
                     case TsItemType.Company:
@@ -199,7 +221,59 @@ namespace TsMap
                         lastOffset += item.BlockSize;
                         break;
                     }
-                    case TsItemType.VisibilityArea:
+                    case TsItemType.Mover:
+                    {
+                        item = new TsMoverItem(this, lastOffset);
+                        lastOffset += item.BlockSize;
+                        break;
+                    }
+                    case TsItemType.NoWeather:
+                    {
+                        item = new TsNoWeatherItem(this, lastOffset);
+                        lastOffset += item.BlockSize;
+                        break;
+                    }
+                    case TsItemType.Sound:
+                    {
+                        item = new TsSoundItem(this, lastOffset);
+                        lastOffset += item.BlockSize;
+                        break;
+                    }
+                    case TsItemType.FarModel:
+                    {
+                        item = new TsFarModelItem(this, lastOffset);
+                        lastOffset += item.BlockSize;
+                        break;
+                    }
+                    case TsItemType.CameraPoint:
+                    {
+                        item = new TsCameraPointItem(this, lastOffset);
+                        lastOffset += item.BlockSize;
+                        break;
+                    }
+                    case TsItemType.Hookup:
+                    {
+                        item = new TsHookupItem(this, lastOffset);
+                        lastOffset += item.BlockSize;
+                        break;
+                    }
+                    case TsItemType.Gate:
+                    {
+                        item = new TsGateItem(this, lastOffset);
+                        lastOffset += item.BlockSize;
+                        break;
+                    }
+                    case TsItemType.Hinge:
+                    {
+                        item = new TsHingeItem(this, lastOffset);
+                        lastOffset += item.BlockSize;
+                        break;
+                    }                    case TsItemType.Camera:
+                    {
+                        item = new TsCameraPathItem(this, lastOffset);
+                        lastOffset += item.BlockSize;
+                        break;
+                    }                    case TsItemType.VisibilityArea:
                     {
                         item = new TsVisibilityAreaItem(this, lastOffset);
                         lastOffset += item.BlockSize;
@@ -208,7 +282,7 @@ namespace TsMap
                     default:
                     {
                         Logger.Instance.Warning($"Unknown Type: {type} in {Path.GetFileName(FilePath)} @ {lastOffset}");
-                        break;
+                        return;
                     }
                 }
 

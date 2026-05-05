@@ -37,7 +37,9 @@ namespace TsMap
         private readonly List<TsFerryConnection> _ferryConnectionLookup = new List<TsFerryConnection>();
 
         public readonly List<TsRoadItem> Roads = new List<TsRoadItem>();
+        public readonly List<TsRoadItem> HiddenRoads = new List<TsRoadItem>();
         public readonly List<TsPrefabItem> Prefabs = new List<TsPrefabItem>();
+        public readonly List<TsPrefabItem> HiddenPrefabs = new List<TsPrefabItem>();
         public readonly List<TsMapAreaItem> MapAreas = new List<TsMapAreaItem>();
         public readonly List<TsCityItem> Cities = new List<TsCityItem>();
         public readonly List<TsFerryItem> FerryConnections = new List<TsFerryItem>();
@@ -46,6 +48,9 @@ namespace TsMap
         public readonly List<TsCutsceneItem> Viewpoints = new List<TsCutsceneItem>();
         public readonly List<TsBusStopItem> BusStops = new List<TsBusStopItem>();
         public readonly List<TsBuildingItem> Buildings = new List<TsBuildingItem>();
+        public readonly List<TsModelItem> Models = new List<TsModelItem>();
+        private readonly Dictionary<ulong, TsModelDescription> _modelDescriptions = new Dictionary<ulong, TsModelDescription>();
+        private readonly Dictionary<ulong, string> _modelPmgPaths = new Dictionary<ulong, string>();
         public readonly List<TsCargoDef> CargoDefs = new List<TsCargoDef>();
         public readonly List<TsCompanyDef> CompanyDefs = new List<TsCompanyDef>();
         public readonly List<TsServiceDef> Services = new List<TsServiceDef>();
@@ -261,6 +266,85 @@ namespace TsMap
             }
         }
 
+        public TsModelDescription GetModelDescription(ulong token)
+        {
+            return _modelDescriptions.TryGetValue(token, out var desc) ? desc : null;
+        }
+
+        /// <summary>Phase 1: builds token→pmgPath index from def/world/model*.sii (no .pmg loading).</summary>
+        private void ParseModelFiles()
+        {
+            var worldDirectory = UberFileSystem.Instance.GetDirectory("def/world");
+            if (worldDirectory == null)
+            {
+                Logger.Instance.Error("Could not read 'def/world' dir for model files");
+                return;
+            }
+
+            foreach (var modelFileName in worldDirectory.GetFiles("model"))
+            {
+                if (!modelFileName.StartsWith("model")) continue;
+                var modelFile = UberFileSystem.Instance.GetFile($"def/world/{modelFileName}");
+                if (modelFile == null) continue;
+
+                var data = modelFile.Entry.Read();
+                var lines = Encoding.UTF8.GetString(data).Split('\n');
+
+                var token = 0UL;
+                var path = "";
+
+                foreach (var line in lines)
+                {
+                    var (validLine, key, value) = SiiHelper.ParseLine(line);
+                    if (validLine)
+                    {
+                        if (key == "model_def")
+                        {
+                            var parts = value.Split('.');
+                            if (parts.Length >= 2)
+                                token = ScsToken.StringToToken(SiiHelper.Trim(parts[1]));
+                        }
+                        else if (key == "model_desc")
+                        {
+                            path = value.Contains('"') ? value.Split('"')[1] : SiiHelper.Trim(value);
+                            path = PathHelper.EnsureLocalPath(path);
+                        }
+                    }
+
+                    if (line.Contains("}") && token != 0 && path != "")
+                    {
+                        try
+                        {
+                            var isBuilding = path.Contains("/building/");
+                            var isPanoramaBuilding = path.Contains("/panorama/") && path.Contains("building");
+                            if ((isBuilding || isPanoramaBuilding) && path.EndsWith(".pmd") && !_modelPmgPaths.ContainsKey(token))
+                                _modelPmgPaths.Add(token, path.Substring(0, path.Length - 4) + ".pmg");
+                        }
+                        finally
+                        {
+                            token = 0;
+                            path = "";
+                        }
+                    }
+                }
+            }
+        }
+
+        /// <summary>Phase 2: loads .pmg headers only for model tokens actually present in the map.</summary>
+        private void LoadModelDescriptions()
+        {
+            var neededTokens = new HashSet<ulong>(Models.Select(m => m.ModelToken));
+            foreach (var token in neededTokens)
+            {
+                if (!_modelPmgPaths.TryGetValue(token, out var pmgPath)) continue;
+                var pmgFile = UberFileSystem.Instance.GetFile(pmgPath);
+                if (pmgFile == null) continue;
+                var desc = TsModelDescription.ParsePmgHeader(pmgFile.Entry.Read());
+                if (desc != null)
+                    _modelDescriptions[token] = desc;
+            }
+        }
+
         private void ParseFerryConnections()
         {
             var connectionDirectory = UberFileSystem.Instance.GetDirectory("def/ferry/connection");
@@ -352,6 +436,10 @@ namespace TsMap
             startTime = DateTime.Now.Ticks;
             ParseFerryConnections();
             Logger.Instance.Info($"Loaded {_ferryConnectionLookup.Count} ferry connections in {(DateTime.Now.Ticks - startTime) / TimeSpan.TicksPerMillisecond}ms");
+
+            startTime = DateTime.Now.Ticks;
+            ParseModelFiles();
+            Logger.Instance.Info($"Indexed {_modelPmgPaths.Count} model pmg paths in {(DateTime.Now.Ticks - startTime) / TimeSpan.TicksPerMillisecond}ms");
         }
 
         /// <summary>
@@ -388,6 +476,7 @@ namespace TsMap
                 }
 
                 _sectorFiles.AddRange(mapFileDir.GetFilesByExtension($"map/{mapName}", ".base"));
+                _sectorFiles.AddRange(mapFileDir.GetFilesByExtension($"map/{mapName}", ".aux"));
             }
         }
 
@@ -438,6 +527,10 @@ namespace TsMap
             Sectors.ForEach(sec => sec.Parse());
             Sectors.ForEach(sec => sec.ClearFileData());
             Logger.Instance.Info($"It took {(DateTime.Now.Ticks - preMapParseTime) / TimeSpan.TicksPerMillisecond} ms to parse all (*.base) files");
+
+            startTime = DateTime.Now.Ticks;
+            LoadModelDescriptions();
+            Logger.Instance.Info($"Loaded {_modelDescriptions.Count} model descriptions for {Models.Count} map models in {(DateTime.Now.Ticks - startTime) / TimeSpan.TicksPerMillisecond}ms");
 
             // Populate Items dict then SetForwardBackward
             foreach (var item in MapItems) Items[item.Uid] = item;

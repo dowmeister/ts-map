@@ -123,32 +123,6 @@ namespace TsMap
             return Math.Max(60.0, Math.Min(500.0, baseHeight * Math.Sqrt(reference / clampedArea)));
         }
 
-        /// <summary>
-        /// Export all map data as GeoJSON files
-        /// </summary>
-        public void ExportAll(string outputPath)
-        {
-            if (!Directory.Exists(outputPath))
-                Directory.CreateDirectory(outputPath);
-
-            Logger.Instance.Info("Starting GeoJSON export...");
-
-            ExportRoads(Path.Combine(outputPath, "roads.geojson"));
-            ExportPrefabs(
-                Path.Combine(outputPath, "prefab_roads.geojson"),
-                Path.Combine(outputPath, "prefab_flat.geojson"),
-                Path.Combine(outputPath, "prefab_buildings.geojson"));
-            ExportCities(Path.Combine(outputPath, "cities.geojson"));
-            ExportCompanies(Path.Combine(outputPath, "companies.geojson"));
-            ExportFerries(Path.Combine(outputPath, "ferries.geojson"));
-            ExportMapAreas(
-                Path.Combine(outputPath, "map_flat.geojson"),
-                Path.Combine(outputPath, "map_buildings.geojson"));
-            ExportBuildings(Path.Combine(outputPath, "buildings.geojson"));
-
-            Logger.Instance.Info($"GeoJSON export completed to: {outputPath}");
-        }
-
         private static string GetRoadClass(TsRoadLook look)
         {
             if (look == null) return "normal";
@@ -901,9 +875,13 @@ namespace TsMap
         public void ExportBuildings(string filePath)
         {
             var features = new JArray();
+            // Only export scheme20 buildings — same filter as truckermudgeon.
+            // All other schemes are procedural facade/wall segments that produce noise.
+            var scheme20Token = Common.ScsToken.StringToToken("scheme20");
 
             foreach (var building in _mapper.Buildings)
             {
+                if (building.SchemeToken != scheme20Token) continue;
                 if (building.NodeUids == null || building.NodeUids.Length < 2) continue;
 
                 var startNode = _mapper.GetNodeByUid(building.NodeUids[0]);
@@ -976,6 +954,246 @@ namespace TsMap
                 ["features"] = features
             }.ToString(Formatting.None));
             Logger.Instance.Info($"Exported {features.Count} procedural buildings to {Path.GetFileName(filePath)}");
+        }
+
+        /// <summary>
+        /// Export hidden prefabs (Hidden=true) as GeoJSON LineStrings (centerlines between MapPoints).
+        /// </summary>
+        public void ExportHiddenPrefabs(string roadFilePath)
+        {
+            var features = new JArray();
+
+            foreach (var prefabItem in _mapper.HiddenPrefabs)
+            {
+                if (prefabItem.Prefab == null) continue;
+
+                var prefab = prefabItem.Prefab;
+                if (prefabItem.Nodes == null || prefabItem.Nodes.Count == 0) continue;
+
+                var origin = _mapper.GetNodeByUid(prefabItem.Nodes[0]);
+                if (origin == null) continue;
+                if (prefab.PrefabNodes == null) continue;
+                if (prefab.MapPoints == null || prefab.MapPoints.Count == 0) continue;
+
+                var mapPointOrigin = prefab.PrefabNodes[prefabItem.Origin];
+                var rot = (float)(origin.Rotation - Math.PI - Math.Atan2(mapPointOrigin.RotZ, mapPointOrigin.RotX) + Math.PI / 2);
+                var prefabStartX = origin.X - mapPointOrigin.X;
+                var prefabStartZ = origin.Z - mapPointOrigin.Z;
+
+                var pointsDrawn = new List<int>();
+                var processedPairs = new HashSet<string>();
+
+                for (var i = 0; i < prefab.MapPoints.Count; i++)
+                {
+                    var mapPoint = prefab.MapPoints[i];
+                    pointsDrawn.Add(i);
+                    if (mapPoint.LaneCount == -1) continue;
+
+                    foreach (var neighbourPointIndex in mapPoint.Neighbours)
+                    {
+                        if (pointsDrawn.Contains(neighbourPointIndex)) continue;
+                        var pairKey = $"{Math.Min(i, neighbourPointIndex)}_{Math.Max(i, neighbourPointIndex)}";
+                        if (!processedPairs.Add(pairKey)) continue;
+
+                        var neighbourPoint = prefab.MapPoints[neighbourPointIndex];
+                        if (neighbourPoint.LaneCount == -1) continue;
+
+                        var p1 = TransformPrefabPoint(mapPoint.X, mapPoint.Z, prefabStartX, prefabStartZ, rot, origin);
+                        var p2 = TransformPrefabPoint(neighbourPoint.X, neighbourPoint.Z, prefabStartX, prefabStartZ, rot, origin);
+
+                        var (lon1, lat1) = GameToLatLng(p1.X, p1.Z);
+                        var (lon2, lat2) = GameToLatLng(p2.X, p2.Z);
+
+                        features.Add(new JObject
+                        {
+                            ["type"] = "Feature",
+                            ["geometry"] = new JObject
+                            {
+                                ["type"] = "LineString",
+                                ["coordinates"] = new JArray
+                                {
+                                    new JArray { lon1, lat1 },
+                                    new JArray { lon2, lat2 },
+                                }
+                            },
+                            ["properties"] = new JObject
+                            {
+                                ["dlc_guard"] = prefabItem.DlcGuard
+                            }
+                        });
+                    }
+                }
+            }
+
+            File.WriteAllText(roadFilePath, new JObject
+            {
+                ["type"] = "FeatureCollection",
+                ["features"] = features
+            }.ToString(Formatting.None));
+            Logger.Instance.Info($"Exported {features.Count} hidden prefab centerlines to {Path.GetFileName(roadFilePath)}");
+        }
+
+        /// <summary>
+        /// Export hidden roads (Hidden=true) as GeoJSON LineStrings.
+        /// These are the thin road hints visible in truckermudgeon as dotted lines.
+        /// </summary>
+        public void ExportHiddenRoads(string filePath)
+        {
+            var features = new JArray();
+
+            foreach (var road in _mapper.HiddenRoads)
+            {
+                if (!road.Valid) continue;
+
+                var startNode = road.GetStartNode();
+                var endNode = road.GetEndNode();
+                if (startNode == null || endNode == null) continue;
+
+                var coords = new JArray();
+
+                if (!road.HasPoints())
+                {
+                    var sx = startNode.X; var sz = startNode.Z;
+                    var ex = endNode.X;   var ez = endNode.Z;
+                    var radius = Math.Sqrt(Math.Pow(sx - ex, 2) + Math.Pow(sz - ez, 2));
+                    var tanSx = Math.Cos(-(Math.PI * 0.5f - startNode.Rotation)) * radius;
+                    var tanEx = Math.Cos(-(Math.PI * 0.5f - endNode.Rotation)) * radius;
+                    var tanSz = Math.Sin(-(Math.PI * 0.5f - startNode.Rotation)) * radius;
+                    var tanEz = Math.Sin(-(Math.PI * 0.5f - endNode.Rotation)) * radius;
+
+                    for (var i = 0; i < 8; i++)
+                    {
+                        var s = i / 7f;
+                        var x = (float)TsRoadLook.Hermite(s, sx, ex, tanSx, tanEx);
+                        var z = (float)TsRoadLook.Hermite(s, sz, ez, tanSz, tanEz);
+                        var (lon, lat) = GameToLatLng(x, z);
+                        coords.Add(new JArray { lon, lat });
+                    }
+                }
+                else
+                {
+                    foreach (var pt in road.GetPoints())
+                    {
+                        var (lon, lat) = GameToLatLng(pt.X, pt.Y);
+                        coords.Add(new JArray { lon, lat });
+                    }
+                }
+
+                if (coords.Count < 2) continue;
+
+                var roadWidth = road.RoadLook?.GetWidth() ?? 10f;
+
+                features.Add(new JObject
+                {
+                    ["type"] = "Feature",
+                    ["geometry"] = new JObject
+                    {
+                        ["type"] = "LineString",
+                        ["coordinates"] = coords
+                    },
+                    ["properties"] = new JObject
+                    {
+                        ["is_secret"] = road.IsSecret,
+                        ["width"] = roadWidth
+                    }
+                });
+            }
+
+            File.WriteAllText(filePath, new JObject
+            {
+                ["type"] = "FeatureCollection",
+                ["features"] = features
+            }.ToString(Formatting.None));
+            Logger.Instance.Info($"Exported {features.Count} hidden roads to {Path.GetFileName(filePath)}");
+        }
+
+        /// <summary>
+        /// Export Model item footprints as GeoJSON Polygons.
+        /// Each footprint is the model's bounding-box rotated and scaled into world space,
+        /// matching truckermudgeon-maps' footprints.ts pipeline.
+        /// </summary>
+        public void ExportModelFootprints(string filePath)
+        {
+            var features = new JArray();
+            var totalModels = 0;
+            var withDesc = 0;
+            var withDescAndNode = 0;
+
+            foreach (var model in _mapper.Models)
+            {
+                totalModels++;
+
+                var desc = _mapper.GetModelDescription(model.ModelToken);
+                if (desc == null) continue;
+                withDesc++;
+
+                if (!_mapper.Nodes.TryGetValue(model.NodeUid, out var node)) continue;
+                withDescAndNode++;
+
+                // Pivot = bbox center in world space (truckermudgeon: o = node + md.center).
+                // desc.StartX/Z are relative to the bbox center (not model origin) in .pmg format.
+                var ox = node.X + desc.CenterX;
+                var oz = node.Z + desc.CenterZ;
+
+                // 4 corners relative to bbox center (same as truckermudgeon md.start/end).
+                var corners = new (float dx, float dz)[]
+                {
+                    (desc.StartX, desc.StartZ), // tl
+                    (desc.EndX,   desc.StartZ), // tr
+                    (desc.EndX,   desc.EndZ),   // br
+                    (desc.StartX, desc.EndZ),   // bl
+                };
+
+                // Truckermudgeon: footprint_angle = node.rotation - π/2
+                //   node.rotation = atan2(-qy,qw)*2 - π/2  = our Rotation - π/2
+                //   footprint_angle = Rotation - π/2 - π/2 = Rotation - π
+                // Both systems have lat ∝ -game_Z, no extra inversion needed.
+                var angle = node.Rotation - Math.PI;
+                var cos = Math.Cos(angle);
+                var sin = Math.Sin(angle);
+
+                var ring = new JArray();
+                foreach (var (dx, dz) in corners)
+                {
+                    // 1. Rotate around pivot (truckermudgeon: rotate first)
+                    var rdx = dx * cos - dz * sin;
+                    var rdz = dx * sin + dz * cos;
+
+                    // 2. Scale around pivot (truckermudgeon: nonUniformScale after rotate)
+                    var wx = ox + rdx * model.ScaleX;
+                    var wz = oz + rdz * model.ScaleZ;
+
+                    var (lon, lat) = GameToLatLng((float)wx, (float)wz);
+                    ring.Add(new JArray { lon, lat });
+                }
+                // Close the ring
+                ring.Add(ring[0]);
+
+                var height = (int)Math.Round(desc.Height * model.ScaleY);
+
+                features.Add(new JObject
+                {
+                    ["type"] = "Feature",
+                    ["geometry"] = new JObject
+                    {
+                        ["type"] = "Polygon",
+                        ["coordinates"] = new JArray { ring }
+                    },
+                    ["properties"] = new JObject
+                    {
+                        ["type"] = "footprint",
+                        ["height"] = height
+                    }
+                });
+            }
+
+            File.WriteAllText(filePath, new JObject
+            {
+                ["type"] = "FeatureCollection",
+                ["features"] = features
+            }.ToString(Formatting.None));
+
+            Logger.Instance.Info($"[Footprints] total Models={totalModels}, withDesc={withDesc}, withDescAndNode={withDescAndNode}, exported={features.Count}");
         }
 
         /// <summary>

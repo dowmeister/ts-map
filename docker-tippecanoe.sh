@@ -38,6 +38,9 @@ docker run --rm \
     -L map_flat:/data/geojson/map_flat.geojson \
     -L map_buildings:/data/geojson/map_buildings.geojson \
     -L buildings:/data/geojson/buildings.geojson \
+    -L footprints:/data/geojson/footprints.geojson \
+    -L hidden_roads:/data/geojson/hidden_roads.geojson \
+    -L hidden_prefabs:/data/geojson/hidden_prefabs.geojson \
     -L ferries:/data/geojson/ferries.geojson \
     -L cities:/data/geojson/cities.geojson \
     -L companies:/data/geojson/companies.geojson \
@@ -58,8 +61,30 @@ echo "Vector tiles generated successfully!"
 echo "Game: $GAME"
 echo "Output: mbtiles/${GAME}.mbtiles"
 echo "======================================="
+
 echo ""
-echo "To start the servers:"
-echo "  docker-compose up -d"
-echo ""
-echo "Then open: http://localhost:5500/vector-viewer.html?game=$GAME"
+echo "Converting to PMTiles..."
+
+# Detect Python — override with PYTHON_CMD env var if needed
+PYTHON_CMD="${PYTHON_CMD:-}"
+if [ -z "$PYTHON_CMD" ]; then
+    if command -v python3 &>/dev/null; then
+        PYTHON_CMD="python3"
+    elif command -v python &>/dev/null; then
+        PYTHON_CMD="python"
+    fi
+fi
+
+if [ -z "$PYTHON_CMD" ]; then
+    echo "WARNING: Python not found, skipping PMTiles conversion."
+    echo "  Install Python + 'pip install pmtiles', or set PYTHON_CMD=/path/to/python"
+else
+    mkdir -p pmtiles
+    rm -f "pmtiles/${GAME}.pmtiles"
+
+    "$PYTHON_CMD" -c "
+from pmtiles.convert import mbtiles_to_pmtiles
+mbtiles_to_pmtiles('mbtiles/${GAME}.mbtiles', 'pmtiles/${GAME}.pmtiles', None)
+" && echo "Output: pmtiles/${GAME}.pmtiles" \
+    || echo "WARNING: PMTiles conversion failed. Is 'pmtiles' installed? Run: pip install pmtiles"
+fi
