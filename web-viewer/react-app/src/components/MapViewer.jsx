@@ -4,29 +4,32 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { createMapStyle } from '../utils/mapStyle'
 import './MapViewer.css'
 
-function MapViewer({ game, onMapLoad, onZoomChange, onBoundsChange, trucks }) {
+function MapViewer({ game, initialPosition, onMapLoad, onZoomChange, onBoundsChange, onPositionChange, trucks }) {
   const mapContainer = useRef(null)
   const map = useRef(null)
-  const callbacksRef = useRef({ onMapLoad, onZoomChange, onBoundsChange })
+  const callbacksRef = useRef({ onMapLoad, onZoomChange, onBoundsChange, onPositionChange })
 
   // Keep callbacks ref up to date
   useEffect(() => {
-    callbacksRef.current = { onMapLoad, onZoomChange, onBoundsChange }
-  }, [onMapLoad, onZoomChange, onBoundsChange])
+    callbacksRef.current = { onMapLoad, onZoomChange, onBoundsChange, onPositionChange }
+  }, [onMapLoad, onZoomChange, onBoundsChange, onPositionChange])
 
   // Initialize map once
   useEffect(() => {
     if (map.current) return
 
+    const startCenter = initialPosition?.center ?? [
+      parseFloat(import.meta.env.VITE_MAP_DEFAULT_CENTER_LON || 0),
+      parseFloat(import.meta.env.VITE_MAP_DEFAULT_CENTER_LAT || 0)
+    ]
+    const startZoom = initialPosition?.zoom ?? parseFloat(import.meta.env.VITE_MAP_DEFAULT_ZOOM || 4)
+
     map.current = new maplibregl.Map({
       container: mapContainer.current,
       projection: 'equirectangular',
       style: createMapStyle(game),
-      center: [
-        parseFloat(import.meta.env.VITE_MAP_DEFAULT_CENTER_LON || 0),
-        parseFloat(import.meta.env.VITE_MAP_DEFAULT_CENTER_LAT || 0)
-      ],
-      zoom: parseFloat(import.meta.env.VITE_MAP_DEFAULT_ZOOM || 4),
+      center: startCenter,
+      zoom: startZoom,
       minZoom: 4,
       pitch: parseFloat(import.meta.env.VITE_MAP_DEFAULT_PITCH || 20),
       bearing: parseFloat(import.meta.env.VITE_MAP_DEFAULT_BEARING || 0),
@@ -46,6 +49,12 @@ function MapViewer({ game, onMapLoad, onZoomChange, onBoundsChange, trucks }) {
       }
     }
 
+    const updateHash = () => {
+      if (callbacksRef.current.onPositionChange) {
+        callbacksRef.current.onPositionChange(map.current.getZoom(), map.current.getCenter())
+      }
+    }
+
     map.current.on('load', () => {
       if (callbacksRef.current.onMapLoad) {
         callbacksRef.current.onMapLoad(map.current)
@@ -55,6 +64,7 @@ function MapViewer({ game, onMapLoad, onZoomChange, onBoundsChange, trucks }) {
 
     map.current.on('move', updateMapState)
     map.current.on('zoom', updateMapState)
+    map.current.on('moveend', updateHash)
 
     return () => {
       if (map.current) {
@@ -64,19 +74,10 @@ function MapViewer({ game, onMapLoad, onZoomChange, onBoundsChange, trucks }) {
     }
   }, [])
 
-  // Update style and reset viewport when game changes
+  // Update style when game changes, preserve current viewport position
   useEffect(() => {
     if (map.current && map.current.isStyleLoaded()) {
       map.current.setStyle(createMapStyle(game))
-      map.current.jumpTo({
-        center: [
-          parseFloat(import.meta.env.VITE_MAP_DEFAULT_CENTER_LON || 0),
-          parseFloat(import.meta.env.VITE_MAP_DEFAULT_CENTER_LAT || 0),
-        ],
-        zoom:    parseFloat(import.meta.env.VITE_MAP_DEFAULT_ZOOM    || 4),
-        pitch:   parseFloat(import.meta.env.VITE_MAP_DEFAULT_PITCH   || 20),
-        bearing: parseFloat(import.meta.env.VITE_MAP_DEFAULT_BEARING || 0),
-      })
     }
   }, [game])
 

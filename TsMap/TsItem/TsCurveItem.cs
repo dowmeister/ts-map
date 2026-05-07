@@ -32,9 +32,14 @@ namespace TsMap.TsItem
         public void TsCurveItem907(int startOffset)
         {
             var fileOffset = startOffset + 0x34; // Set position at start of flags
-            var subCurvesCount =
-                MemoryHelper.ReadInt32(Sector.Stream, fileOffset += 0x05 + (4 * 0x08) + 0x04); // 0x05(flags) + 4 * 0x08(4 node uids) + 0x04(length)
-            fileOffset += 0x04; // 0x04(subCurvesCount)
+            var subcurveUseMask =
+                (uint)MemoryHelper.ReadInt32(Sector.Stream, fileOffset += 0x05 + (4 * 0x08) + 0x04); // 0x05(flags) + 4 * 0x08(4 node uids) + 0x04(length)
+            fileOffset += 0x04; // 0x04(subcurveUseMask)
+
+            // Number of subcurves = popcount(subcurveUseMask)
+            var subCurvesCount = 0;
+            var mask = subcurveUseMask;
+            while (mask != 0) { mask &= mask - 1; subCurvesCount++; }
 
             for (int i = 0; i < subCurvesCount; i++)
             {

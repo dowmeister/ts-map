@@ -8,6 +8,7 @@
 #   ./upload-overlay-images.sh all           # Sync everything for all games
 #   ./upload-overlay-images.sh images        # Sync only images for all games
 #   ./upload-overlay-images.sh sprites       # Sync only sprite files for all games
+#   ./upload-overlay-images.sh pmtiles       # Sync only pmtiles for all games
 #   ./upload-overlay-images.sh json ets2     # Sync only JSON for ets2
 #   ./upload-overlay-images.sh all ets2 ats  # Sync everything for ets2 and ats
 
@@ -19,9 +20,9 @@ SYNC_MODE="${1:-all}"
 shift
 
 # Validate sync mode
-if [[ ! "$SYNC_MODE" =~ ^(all|images|json|sprites)$ ]]; then
+if [[ ! "$SYNC_MODE" =~ ^(all|images|json|sprites|pmtiles)$ ]]; then
     echo "Error: Invalid sync mode '$SYNC_MODE'"
-    echo "Usage: $0 <all|images|json|sprites> [game1] [game2] ..."
+    echo "Usage: $0 <all|images|json|sprites|pmtiles> [game1] [game2] ..."
     exit 1
 fi
 
@@ -137,6 +138,38 @@ sync_json_files() {
     fi
 }
 
+# Function to sync pmtiles for a game
+sync_pmtiles() {
+    local game=$1
+    local pmtiles_file="$SCRIPT_DIR/map_data/pmtiles/$game.pmtiles"
+
+    if [ ! -f "$pmtiles_file" ]; then
+        echo "Warning: $game pmtiles file not found at $pmtiles_file"
+        return
+    fi
+
+    echo ""
+    echo "==> Syncing $game pmtiles..."
+    echo "Source: $pmtiles_file"
+    echo "Destination: $REMOTE_NAME:$BUCKET_NAME/pmtiles/$game.pmtiles"
+
+    rclone copyto \
+        --config "$CONFIG_FILE" \
+        --progress \
+        --s3-upload-concurrency 4 \
+        --header-upload "Cache-Control: public, max-age=300" \
+        --header-upload "x-amz-meta-uploaded: $(date +%s)" \
+        "$pmtiles_file" \
+        "$REMOTE_NAME:$BUCKET_NAME/pmtiles/$game.pmtiles"
+
+    if [ $? -eq 0 ]; then
+        echo "✓ $game pmtiles synced successfully"
+    else
+        echo "✗ Failed to sync $game pmtiles"
+        exit 1
+    fi
+}
+
 # Function to sync sprite files for a game
 sync_sprites() {
     local game=$1
@@ -190,6 +223,13 @@ fi
 if [[ "$SYNC_MODE" == "all" || "$SYNC_MODE" == "sprites" ]]; then
     for game in "${GAMES[@]}"; do
         sync_sprites "$game"
+    done
+fi
+
+# Sync pmtiles for selected games
+if [[ "$SYNC_MODE" == "all" || "$SYNC_MODE" == "pmtiles" ]]; then
+    for game in "${GAMES[@]}"; do
+        sync_pmtiles "$game"
     done
 fi
 

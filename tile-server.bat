@@ -1,1 +1,0 @@
-tileserver-gl-light -c mbtiles\config.json
