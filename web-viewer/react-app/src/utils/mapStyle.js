@@ -124,7 +124,7 @@ export function createMapStyle(game) {
 
   return {
     version: 8,
-    glyphs: "/font/{fontstack}/{range}.pbf",
+    glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
     sprite: [
       {
         id: "company",
@@ -369,6 +369,7 @@ export function createMapStyle(game) {
         minzoom: 5,
         layout: {
           "text-field": ["get", "localized_name"],
+          "text-font": ["Klokantech Noto Sans Regular"],
           "text-size": [
             "interpolate",
             ["linear"],
@@ -439,6 +440,7 @@ export function createMapStyle(game) {
         filter: ["==", "$type", "Point"],
         layout: {
           "text-field": ["get", "label"],
+          "text-font": ["Klokantech Noto Sans Regular"],
           "text-size": 10,
           "text-allow-overlap": true,
           "text-ignore-placement": true,
