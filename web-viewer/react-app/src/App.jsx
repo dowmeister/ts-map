@@ -50,10 +50,10 @@ function App() {
 
   useDebugOverlay(mapInstance, tileMapInfo, debugEnabled)
 
-  // Sync game to path, keep existing hash
+  // Sync game to path, clear hash so position resets
   const handleGameChange = useCallback((newGame) => {
     setCurrentGame(newGame)
-    window.history.pushState({}, '', buildUrl(newGame, window.location.hash))
+    window.history.pushState({}, '', buildUrl(newGame, ''))
   }, [])
 
   // Update hash on map moveend

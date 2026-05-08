@@ -14,7 +14,11 @@ export function useCities(game) {
         const validCities = data.filter(city => 
           city && city.Name && city.X !== undefined && city.Y !== undefined
         )
-        validCities.sort((a, b) => (a.Name || '').localeCompare(b.Name || ''))
+        validCities.sort((a, b) => {
+          const nameA = a.LocalizedNames?.en_gb || a.Name || ''
+          const nameB = b.LocalizedNames?.en_gb || b.Name || ''
+          return nameA.localeCompare(nameB)
+        })
         setCities(validCities)
       } catch (error) {
         console.error('Error loading cities:', error)

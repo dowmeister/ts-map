@@ -20,7 +20,7 @@ function CitySelector({ cities, mapInstance, tileMapInfo }) {
             key={index} 
             value={JSON.stringify({ x: city.X, z: city.Y })}
           >
-            {city.Name}
+            {city.LocalizedNames?.en_gb || city.Name}
           </option>
         ))}
       </select>

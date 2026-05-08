@@ -134,6 +134,7 @@ namespace TsMap.Cli
                 // Parse map
                 Console.Write("Parsing map sectors... ");
                 mapper.Parse();
+                mapper.Localization.ChangeLocalization("en_gb");
                 Console.ForegroundColor = ConsoleColor.Green;
                 Console.WriteLine("✓");
                 Console.ResetColor();

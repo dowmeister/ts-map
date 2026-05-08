@@ -74,10 +74,21 @@ function MapViewer({ game, initialPosition, onMapLoad, onZoomChange, onBoundsCha
     }
   }, [])
 
-  // Update style when game changes, preserve current viewport position
+  // Update style when game changes and reset to default center
   useEffect(() => {
-    if (map.current && map.current.isStyleLoaded()) {
+    if (!map.current) return
+    const defaultCenter = [
+      parseFloat(import.meta.env.VITE_MAP_DEFAULT_CENTER_LON || 0),
+      parseFloat(import.meta.env.VITE_MAP_DEFAULT_CENTER_LAT || 0)
+    ]
+    const defaultZoom = parseFloat(import.meta.env.VITE_MAP_DEFAULT_ZOOM || 4)
+    if (map.current.isStyleLoaded()) {
       map.current.setStyle(createMapStyle(game))
+      map.current.jumpTo({ center: defaultCenter, zoom: defaultZoom })
+    } else {
+      map.current.once('load', () => {
+        map.current.jumpTo({ center: defaultCenter, zoom: defaultZoom })
+      })
     }
   }, [game])
 

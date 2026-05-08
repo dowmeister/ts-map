@@ -7,7 +7,8 @@ import './RoutePlanner.css'
 function WaypointDropdown({ cities, companies, value, onChange, placeholder }) {
   const val = value ? JSON.stringify({ x: value.x, z: value.z, name: value.name }) : ''
 
-  const sortedCities = [...cities].sort((a, b) => a.Name.localeCompare(b.Name))
+  const getCityName = (c) => c.LocalizedNames?.en_gb || c.Name
+  const sortedCities = [...cities].sort((a, b) => getCityName(a).localeCompare(getCityName(b)))
 
   const byCity = {}
   companies.forEach(c => {
@@ -38,8 +39,8 @@ function WaypointDropdown({ cities, companies, value, onChange, placeholder }) {
       {sortedCities.length > 0 && (
         <optgroup label="── Cities ──">
           {sortedCities.map((c, i) => (
-            <option key={i} value={JSON.stringify({ x: c.X, z: c.Y, name: c.Name })}>
-              {c.Name}
+            <option key={i} value={JSON.stringify({ x: c.X, z: c.Y, name: getCityName(c) })}>
+              {getCityName(c)}
             </option>
           ))}
         </optgroup>
