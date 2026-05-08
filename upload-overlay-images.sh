@@ -139,6 +139,9 @@ sync_json_files() {
 }
 
 # Function to sync pmtiles for a game
+# Uploads all pmtiles matching "{game}*.pmtiles":
+#   {game}.pmtiles             — main map layers
+#   {game}-footprints.pmtiles  — footprints + hidden layers (if present)
 sync_pmtiles() {
     local game=$1
     local pmtiles_file="$SCRIPT_DIR/map_data/pmtiles/$game.pmtiles"
@@ -150,8 +153,8 @@ sync_pmtiles() {
 
     echo ""
     echo "==> Syncing $game pmtiles..."
-    echo "Source: $pmtiles_file"
-    echo "Destination: $REMOTE_NAME:$BUCKET_NAME/map_data/pmtiles/$game.pmtiles"
+    echo "Source: $SCRIPT_DIR/map_data/pmtiles/$game*.pmtiles"
+    echo "Destination: $REMOTE_NAME:$BUCKET_NAME/map_data/pmtiles/"
 
     rclone sync \
         --config "$CONFIG_FILE" \
@@ -160,7 +163,7 @@ sync_pmtiles() {
         --s3-upload-concurrency 4 \
         --header-upload "Cache-Control: public, max-age=300" \
         --header-upload "x-amz-meta-uploaded: $(date +%s)" \
-        --include "$game.pmtiles" \
+        --include "${game}*.pmtiles" \
         "$SCRIPT_DIR/map_data/pmtiles/" \
         "$REMOTE_NAME:$BUCKET_NAME/map_data/pmtiles/"
 

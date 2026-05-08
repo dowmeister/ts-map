@@ -148,6 +148,10 @@ export function createMapStyle(game) {
         type: "vector",
         url: `pmtiles://${import.meta.env.VITE_VECTOR_TILES_BASE_URL || "http://localhost:8888"}/${game}.pmtiles`,
       },
+      "footprints-source": {
+        type: "vector",
+        url: `pmtiles://${import.meta.env.VITE_VECTOR_TILES_BASE_URL || "http://localhost:8888"}/${game}-footprints.pmtiles`,
+      },
       trucks: {
         type: "geojson",
         data: {
@@ -277,7 +281,7 @@ export function createMapStyle(game) {
       {
         id: "hidden-prefabs",
         type: "line",
-        source: "map",
+        source: "footprints-source",
         "source-layer": "hidden_prefabs",
         minzoom: 6,
         paint: {
@@ -296,7 +300,7 @@ export function createMapStyle(game) {
       {
         id: "hidden-roads",
         type: "line",
-        source: "map",
+        source: "footprints-source",
         "source-layer": "hidden_roads",
         minzoom: 6,
         paint: {
@@ -315,7 +319,7 @@ export function createMapStyle(game) {
       {
         id: "footprints",
         type: "fill-extrusion",
-        source: "map",
+        source: "footprints-source",
         "source-layer": "footprints",
         minzoom: 6,
         paint: {
