@@ -151,16 +151,18 @@ sync_pmtiles() {
     echo ""
     echo "==> Syncing $game pmtiles..."
     echo "Source: $pmtiles_file"
-    echo "Destination: $REMOTE_NAME:$BUCKET_NAME/pmtiles/$game.pmtiles"
+    echo "Destination: $REMOTE_NAME:$BUCKET_NAME/map_data/pmtiles/$game.pmtiles"
 
-    rclone copyto \
+    rclone sync \
         --config "$CONFIG_FILE" \
         --progress \
+        --transfers 4 \
         --s3-upload-concurrency 4 \
         --header-upload "Cache-Control: public, max-age=300" \
         --header-upload "x-amz-meta-uploaded: $(date +%s)" \
-        "$pmtiles_file" \
-        "$REMOTE_NAME:$BUCKET_NAME/pmtiles/$game.pmtiles"
+        --include "$game.pmtiles" \
+        "$SCRIPT_DIR/map_data/pmtiles/" \
+        "$REMOTE_NAME:$BUCKET_NAME/map_data/pmtiles/"
 
     if [ $? -eq 0 ]; then
         echo "✓ $game pmtiles synced successfully"
