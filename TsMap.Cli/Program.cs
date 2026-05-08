@@ -53,6 +53,10 @@ namespace TsMap.Cli
                 getDefaultValue: () => false);
             validateOption.AddAlias("--validate");
 
+            var mdbOption = new Option<string>(
+                name: "--mdb",
+                description: "Comma-separated list of map databases to export (e.g. 'europe,usa'). Omit to export all.");
+
             var rootCommand = new RootCommand("TsMap CLI - Export ETS2/ATS map data")
         {
             gameOption,
@@ -60,18 +64,19 @@ namespace TsMap.Cli
             formatOption,
             modsDirOption,
             modsListOption,
-            validateOption
+            validateOption,
+            mdbOption
         };
 
-            rootCommand.SetHandler(async (gameDir, outputDir, format, modsDir, modsList, validate) =>
+            rootCommand.SetHandler(async (gameDir, outputDir, format, modsDir, modsList, validate, mdb) =>
             {
-                await ExportMapData(gameDir, outputDir, format, modsDir, modsList, validate);
-            }, gameOption, outputOption, formatOption, modsDirOption, modsListOption, validateOption);
+                await ExportMapData(gameDir, outputDir, format, modsDir, modsList, validate, mdb);
+            }, gameOption, outputOption, formatOption, modsDirOption, modsListOption, validateOption, mdbOption);
 
             return await rootCommand.InvokeAsync(args);
         }
 
-        static async Task ExportMapData(DirectoryInfo gameDir, DirectoryInfo outputDir, ExportFormat format, DirectoryInfo modsDir, FileInfo modsList, bool validateRoutingGraph = false)
+        static async Task ExportMapData(DirectoryInfo gameDir, DirectoryInfo outputDir, ExportFormat format, DirectoryInfo modsDir, FileInfo modsList, bool validateRoutingGraph = false, string mdbFilter = null)
         {
             if (!gameDir.Exists)
             {
@@ -90,6 +95,8 @@ namespace TsMap.Cli
             Console.WriteLine($"Game Directory: {gameDir.FullName}");
             Console.WriteLine($"Output Directory: {outputDir.FullName}");
             Console.WriteLine($"Export Format: {format}");
+            if (!string.IsNullOrWhiteSpace(mdbFilter))
+                Console.WriteLine($"Map DB Filter:  {mdbFilter}");
 
             // Load mods if specified
             var mods = new List<Mod>();
@@ -110,6 +117,16 @@ namespace TsMap.Cli
                 // Initialize TsMapper
                 Console.Write("Loading game files... ");
                 var mapper = new TsMapper(gameDir.FullName, mods);
+
+                if (!string.IsNullOrWhiteSpace(mdbFilter))
+                {
+                    mapper.MapFilter = mdbFilter
+                        .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                        .Select(s => s.Trim())
+                        .Where(s => s.Length > 0)
+                        .ToList();
+                }
+
                 Console.ForegroundColor = ConsoleColor.Green;
                 Console.WriteLine("✓");
                 Console.ResetColor();

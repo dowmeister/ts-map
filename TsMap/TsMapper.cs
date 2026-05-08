@@ -69,6 +69,13 @@ namespace TsMap
 
         internal readonly List<TsItem.TsItem> MapItems = new List<TsItem.TsItem>();
 
+        /// <summary>
+        /// When non-null, only map databases whose name (without extension) appears in this list
+        /// will be loaded. Set before calling <see cref="Parse"/>.
+        /// Example: <c>new List&lt;string&gt; { "europe" }</c>
+        /// </summary>
+        public IReadOnlyList<string> MapFilter { get; set; } = null;
+
         public TsMapper(string gameDir, List<Mod> mods)
         {
             _gameDir = gameDir;
@@ -463,9 +470,19 @@ namespace TsMap
 
             _sectorFiles = new List<string>();
 
+            var matchedFilterNames = MapFilter != null ? new HashSet<string>(StringComparer.OrdinalIgnoreCase) : null;
+
             foreach (var filePath in mbdFilePaths)
             {
                 var mapName = PathHelper.GetFileNameWithoutExtensionFromPath(filePath);
+
+                if (MapFilter != null && !MapFilter.Any(f => string.Equals(f, mapName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    Logger.Instance.Info($"Skipping map database '{mapName}' (not in --mdb filter)");
+                    continue;
+                }
+
+                matchedFilterNames?.Add(mapName);
                 IsEts2 = !(mapName == "usa");
 
                 var mapFileDir = UberFileSystem.Instance.GetDirectory($"map/{mapName}");
@@ -477,6 +494,15 @@ namespace TsMap
 
                 _sectorFiles.AddRange(mapFileDir.GetFilesByExtension($"map/{mapName}", ".base"));
                 _sectorFiles.AddRange(mapFileDir.GetFilesByExtension($"map/{mapName}", ".aux"));
+            }
+
+            if (MapFilter != null)
+            {
+                foreach (var requested in MapFilter)
+                {
+                    if (!matchedFilterNames.Contains(requested))
+                        Logger.Instance.Warning($"Map database '{requested}' requested via --mdb filter was not found");
+                }
             }
         }
 
