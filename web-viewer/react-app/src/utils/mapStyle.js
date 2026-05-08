@@ -246,7 +246,7 @@ export function createMapStyle(game) {
             10,
             4,
           ],
-          "line-dasharray": [2, 2],
+          "line-dasharray": [1, 2],
         },
       },
       {
