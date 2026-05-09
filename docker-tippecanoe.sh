@@ -56,6 +56,7 @@ if [[ "$MODE" == "all" ]]; then
         -L buildings:/data/geojson/buildings.geojson \
         -L ferries:/data/geojson/ferries.geojson \
         -L cities:/data/geojson/cities.geojson \
+        -L countries:/data/geojson/countries.geojson \
         -L companies:/data/geojson/companies.geojson \
         -L overlays:/data/geojson/overlays.geojson"
 

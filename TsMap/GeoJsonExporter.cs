@@ -17,10 +17,12 @@ namespace TsMap
     public class GeoJsonExporter
     {
         private readonly TsMapper _mapper;
+        private readonly ClimateProjectionInfo _projection;
 
         public GeoJsonExporter(TsMapper mapper)
         {
             _mapper = mapper;
+            _projection = MapProjection.ReadClimateProjectionSii();
         }
 
         private static bool _loggedOnce = false;
@@ -30,49 +32,21 @@ namespace TsMap
         /// </summary>
         private (double lon, double lat) GameToLatLng(float gameX, float gameZ)
         {
-            var width = _mapper.maxX - _mapper.minX;
-            var height = _mapper.maxZ - _mapper.minZ;
-
-            var normalizedX = (gameX - _mapper.minX) / width;
-            var normalizedZ = (gameZ - _mapper.minZ) / height;
-
-            // Use larger extent for better visibility at low zoom, but preserve aspect ratio
-            const double maxExtent = 70.0; // degrees - stay very close to equator for minimal distortion
-            var aspectRatio = width / height;
-
-            double lonRange, latRange;
-            if (aspectRatio > 1.0)
-            {
-                // Map is wider than tall
-                lonRange = maxExtent;
-                latRange = maxExtent / aspectRatio;
-            }
-            else
-            {
-                // Map is taller than wide
-                latRange = maxExtent;
-                lonRange = maxExtent * aspectRatio;
-            }
-
-            // Log once for debugging
             if (!_loggedOnce)
             {
                 Console.WriteLine("=== GameToLatLng Coordinate Conversion ===");
-                Console.WriteLine($"Map bounds - minX: {_mapper.minX}, maxX: {_mapper.maxX}");
-                Console.WriteLine($"Map bounds - minZ: {_mapper.minZ}, maxZ: {_mapper.maxZ}");
-                Console.WriteLine($"Width: {width}, Height: {height}");
-                Console.WriteLine($"Aspect Ratio (width/height): {aspectRatio:F4}");
-                Console.WriteLine($"Longitude Range: {lonRange:F2}° (from {-lonRange / 2:F2}° to {lonRange / 2:F2}°)");
-                Console.WriteLine($"Latitude Range: {latRange:F2}° (from {-latRange / 2:F2}° to {latRange / 2:F2}°)");
-                Console.WriteLine($"Map orientation: {(aspectRatio > 1.0 ? "Wider than tall" : "Taller than wide")}");
+                Console.WriteLine($"Projection: {_projection.MapProjection}");
+                Console.WriteLine($"Standard parallels: {_projection.StandardParallel1}, {_projection.StandardParallel2}");
+                Console.WriteLine($"Map origin: lat={_projection.MapOrigin.lat}, lon={_projection.MapOrigin.lon}");
+                Console.WriteLine($"Map offset: x={_projection.MapOffset.x}, z={_projection.MapOffset.z}");
+                Console.WriteLine($"Map factor: z={_projection.MapFactor.z}, x={_projection.MapFactor.x}");
+                Console.WriteLine($"Network bounds - minX: {_mapper.minX}, maxX: {_mapper.maxX}");
+                Console.WriteLine($"Network bounds - minZ: {_mapper.minZ}, maxZ: {_mapper.maxZ}");
                 Console.WriteLine("==========================================");
                 _loggedOnce = true;
             }
 
-            var lon = (normalizedX * lonRange) - (lonRange / 2.0);
-            var lat = (latRange / 2.0) - (normalizedZ * latRange);
-
-            return (lon, lat);
+            return MapProjection.GameToLatLng(gameX, gameZ, _projection);
         }
 
         /// <summary>
@@ -568,6 +542,7 @@ namespace TsMap
                 features.Add(new JObject
                 {
                     ["type"] = "Feature",
+                    ["tippecanoe"] = new JObject { ["minzoom"] = 3 },
                     ["geometry"] = new JObject
                     {
                         ["type"] = "Point",
@@ -589,6 +564,49 @@ namespace TsMap
                 ["features"] = features
             }.ToString(Formatting.None));
             Logger.Instance.Info($"Exported {features.Count} cities to {Path.GetFileName(filePath)}");
+        }
+
+        /// <summary>
+        /// Export countries as GeoJSON Points with English name and ISO country code
+        /// </summary>
+        public void ExportCountries(string filePath)
+        {
+            var features = new JArray();
+
+            foreach (var country in _mapper.Countries)
+            {
+                if (country.X == 0 && country.Y == 0) continue;
+
+                var englishName = _mapper.Localization?.GetLocaleValue(country.LocalizationToken, "en_gb")
+                    ?? _mapper.Localization?.GetLocaleValue(country.LocalizationToken)
+                    ?? country.Name;
+
+                var (lon, lat) = GameToLatLng(country.X, country.Y);
+
+                features.Add(new JObject
+                {
+                    ["type"] = "Feature",
+                    ["tippecanoe"] = new JObject { ["minzoom"] = 3 },
+                    ["geometry"] = new JObject
+                    {
+                        ["type"] = "Point",
+                        ["coordinates"] = new JArray { lon, lat }
+                    },
+                    ["properties"] = new JObject
+                    {
+                        ["name"] = englishName,
+                        ["country_code"] = country.CountryCode,
+                        ["country_id"] = country.CountryId
+                    }
+                });
+            }
+
+            File.WriteAllText(filePath, new JObject
+            {
+                ["type"] = "FeatureCollection",
+                ["features"] = features
+            }.ToString(Formatting.None));
+            Logger.Instance.Info($"Exported {features.Count} countries to {Path.GetFileName(filePath)}");
         }
 
         /// <summary>

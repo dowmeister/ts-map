@@ -18,15 +18,25 @@ function LayerToggle({ mapInstance }) {
 
   function toggle(id, checked) {
     setVisible(prev => ({ ...prev, [id]: checked }))
-    mapInstance?.setLayoutProperty(id, 'visibility', checked ? 'visible' : 'none')
+    const group = OVERLAY_LAYER_GROUPS.find(g => g.id === id)
+    const ids = group?.layers ?? [id]
+    for (const lid of ids) {
+      if (mapInstance?.getLayer(lid))
+        mapInstance.setLayoutProperty(lid, 'visibility', checked ? 'visible' : 'none')
+    }
   }
 
   function toggleAll(checked) {
     const next = Object.fromEntries(OVERLAY_LAYER_GROUPS.map(g => [g.id, checked]))
     setVisible(next)
     if (!mapInstance) return
-    for (const g of OVERLAY_LAYER_GROUPS)
-      mapInstance.setLayoutProperty(g.id, 'visibility', checked ? 'visible' : 'none')
+    for (const g of OVERLAY_LAYER_GROUPS) {
+      const ids = g.layers ?? [g.id]
+      for (const lid of ids) {
+        if (mapInstance.getLayer(lid))
+          mapInstance.setLayoutProperty(lid, 'visibility', checked ? 'visible' : 'none')
+      }
+    }
   }
 
   return (

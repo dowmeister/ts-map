@@ -29,6 +29,7 @@ namespace TsMap
 
         public static void SaveVectorTileMapInfo(string path, float minX, float maxX, float minZ, float maxZ)
         {
+            var projection = MapProjection.ReadClimateProjectionSii();
             var vectorTileMapInfo = new JObject
             {
                 ["x1"] = minX,
@@ -37,7 +38,17 @@ namespace TsMap
                 ["y2"] = maxZ,
                 ["minZoom"] = 4,
                 ["maxZoom"] = 13,
-                ["tileSize"] = 256
+                ["tileSize"] = 256,
+                ["projection"] = new JObject
+                {
+                    ["type"] = projection.MapProjection,
+                    ["standard_parallel_1"] = projection.StandardParallel1,
+                    ["standard_parallel_2"] = projection.StandardParallel2,
+                    ["map_origin"] = new JArray { projection.MapOrigin.lat, projection.MapOrigin.lon },
+                    ["map_offset"] = new JArray { projection.MapOffset.x, projection.MapOffset.z },
+                    ["map_factor"] = new JArray { projection.MapFactor.z, projection.MapFactor.x },
+                    ["use_ets2_uk_scale"] = projection.UseEts2UkScale
+                }
             };
 
             Directory.CreateDirectory(path);

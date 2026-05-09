@@ -330,8 +330,6 @@ namespace TsMap.Canvas
             _tileMapGeneratorForm.ExportMapData += (exportPath) =>
             {
                 _mapper.ExportInfo(exportPath);
-                var geoJson = new GeoJsonExporter(_mapper);
-                geoJson.ExportAll(exportPath);
 
                 MessageBox.Show("Map Data and GeoJSON exported", "Map Info Export",
                         MessageBoxButtons.OK, MessageBoxIcon.Information);

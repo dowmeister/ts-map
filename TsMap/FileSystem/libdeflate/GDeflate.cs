@@ -42,8 +42,6 @@ namespace TsMap.FileSystem.libdeflate
                 TileSizeData = MemoryHelper.ReadUInt32(input, 4)
             };
 
-            if (header.NumTiles != 1) Logger.Instance.Error("More than 1 tile.");
-
             TileDecompressionJob(header, input, ref output);
 
             return libdeflate_result.LIBDEFLATE_SUCCESS;
@@ -85,16 +83,19 @@ namespace TsMap.FileSystem.libdeflate
                         : tileOffsets[0]
                 };
 
-                var outputOffset = tileIndex * KDefaultTileSize;
+                var outputOffset = (int)(tileIndex * KDefaultTileSize);
+                var tileOutputSize = (uint)Math.Min(KDefaultTileSize, output.Length - outputOffset);
 
+                var tileBuf = new byte[tileOutputSize];
                 LibdeflateWrapper.libdeflate_gdeflate_decompress(
                     decompressor,
                     ref compressedPage,
                     1,
-                    output,
-                    KDefaultTileSize,
+                    tileBuf,
+                    tileOutputSize,
                     UIntPtr.Zero
                 );
+                Buffer.BlockCopy(tileBuf, 0, output, outputOffset, (int)tileOutputSize);
 
                 Marshal.FreeHGlobal(bufferPtr);
             }

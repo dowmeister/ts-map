@@ -154,6 +154,7 @@ namespace TsMap.Cli
                     var geoJsonPath = Path.Combine(outputDir.FullName, "geojson");
                     Directory.CreateDirectory(geoJsonPath);
 
+                    var projectionBounds = MapProjection.GetWorldMapBounds();
                     var exporter = new GeoJsonExporter(mapper);
                     RoutingGraph capturedGraph = null;
 
@@ -176,6 +177,12 @@ namespace TsMap.Cli
 
                         Console.Write("  → cities.geojson... ");
                         exporter.ExportCities(Path.Combine(geoJsonPath, "cities.geojson"));
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine("✓");
+                        Console.ResetColor();
+
+                        Console.Write("  → countries.geojson... ");
+                        exporter.ExportCountries(Path.Combine(geoJsonPath, "countries.geojson"));
                         Console.ForegroundColor = ConsoleColor.Green;
                         Console.WriteLine("✓");
                         Console.ResetColor();
@@ -222,7 +229,12 @@ namespace TsMap.Cli
                         Console.ResetColor();
 
                         Console.Write("  → VectorTileMapInfo.json... ");
-                        JsonHelper.SaveVectorTileMapInfo(outputDir.FullName, mapper.minX, mapper.maxX, mapper.minZ, mapper.maxZ);
+                        JsonHelper.SaveVectorTileMapInfo(
+                            outputDir.FullName,
+                            projectionBounds.MinX,
+                            projectionBounds.MaxX,
+                            projectionBounds.MinZ,
+                            projectionBounds.MaxZ);
                         Console.ForegroundColor = ConsoleColor.Green;
                         Console.WriteLine("✓");
                         Console.ResetColor();
@@ -240,6 +252,14 @@ namespace TsMap.Cli
                         Console.ResetColor();
 
                         mapper.ExportInfo(outputDir.FullName);
+
+                        /*
+                        Console.Write("  → map_background/ (DDS + map_info.json)... ");
+                        new MapBackgroundExporter(mapper).Export(outputDir.FullName);
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine("✓");
+                        Console.ResetColor();
+                        */
 
                         Console.Write("  → routing-graph.json... ");
                         capturedGraph = new RoutingGraphBuilder(mapper).Build();

@@ -16,7 +16,7 @@
   },
   "scripts": {
     "dev": "concurrently -n \"tiles,react\" -c \"cyan,green\" \"npm run dev:tiles\" \"npm run dev:react\"",
-    "dev:tiles": "http-server ../../map_data/pmtiles -p 8888 --cors --silent",
+    "dev:tiles": "http-server ../../map_data -p 8888 --cors --silent",
     "dev:react": "vite",
     "build": "vite build",
     "preview": "vite preview"

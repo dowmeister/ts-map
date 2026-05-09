@@ -94,6 +94,7 @@ function _overlayLayers() {
 }
 
 export const OVERLAY_LAYER_GROUPS = [
+  //{ id: "map-background", label: "Map Background", layers: ["game-background"] },
   { id: "overlays-companies", label: "Companies" },
   { id: "overlays-fuel", label: "Fuel Stations" },
   { id: "overlays-garage", label: "Garages" },
@@ -114,14 +115,39 @@ export const OVERLAY_LAYER_GROUPS = [
   { id: "hidden-roads", label: "Hidden Roads" },
 ];
 
-export function createMapStyle(game) {
-  const rawBase = import.meta.env.VITE_OVERLAY_IMAGES_BASE_URL || "/map_data";
+function buildBackground(baseUrl, game, mapInfo) {
+  if (!mapInfo?.texture_bbox_wgs84) {
+    return { sources: {}, layers: [] };
+  }
+
+  return {
+    sources: {
+      "game-background": {
+        type: "raster",
+        url: `pmtiles://${baseUrl}/pmtiles/${game}-background.pmtiles`,
+        tileSize: 256,
+      },
+    },
+    layers: [
+      {
+        id: "game-background",
+        type: "raster",
+        source: "game-background",
+        paint: { "raster-opacity": 0.85 },
+      },
+    ],
+  };
+}
+
+export function createMapStyle(game, mapInfo = null) {
+  const rawBase = import.meta.env.VITE_MAP_DATA_URL || "http://localhost:8888";
   const baseUrl = rawBase.startsWith("http")
     ? rawBase
     : `${window.location.origin}${rawBase}`;
-  // Cache busting version - automatically set at build time
   const spriteVersion = Date.now().toString();
+  //const 4= buildBackground(baseUrl, game, mapInfo);
 
+  console.log('Using map style with base URL:', baseUrl);
   return {
     version: 8,
     glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
@@ -146,12 +172,13 @@ export function createMapStyle(game) {
     sources: {
       map: {
         type: "vector",
-        url: `pmtiles://${import.meta.env.VITE_VECTOR_TILES_BASE_URL || "http://localhost:8888"}/${game}.pmtiles`,
+        url: `pmtiles://${baseUrl}/pmtiles/${game}.pmtiles`,
       },
       "footprints-source": {
         type: "vector",
-        url: `pmtiles://${import.meta.env.VITE_VECTOR_TILES_BASE_URL || "http://localhost:8888"}/${game}-footprints.pmtiles`,
+        url: `pmtiles://${baseUrl}/pmtiles/${game}-footprints.pmtiles`,
       },
+      //...background.sources,
       trucks: {
         type: "geojson",
         data: {
@@ -176,6 +203,7 @@ export function createMapStyle(game) {
           "background-color": "#1A2733",
         },
       },
+      //...background.layers,
       {
         id: "footprints",
         type: "fill-extrusion",
@@ -361,6 +389,53 @@ export function createMapStyle(game) {
       // they appear as thin diagonal strips that are not useful for visualization.
 
       ..._overlayLayers(),
+      {
+        id: "country-labels",
+        type: "symbol",
+        source: "map",
+        "source-layer": "countries",
+        minzoom: 3,
+        maxzoom: 6,
+        layout: {
+          "text-field": ["get", "name"],
+          "text-font": ["Klokantech Noto Sans Regular"],
+          "text-size": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            3,
+            11,
+            4,
+            13,
+            5,
+            16,
+            6,
+            18,
+          ],
+          "text-anchor": "center",
+          "text-allow-overlap": true,
+          "text-ignore-placement": true,
+          "text-letter-spacing": 0.15,
+        },
+        paint: {
+          "text-color": "#D4B896",
+          "text-halo-color": "#0F1C26",
+          "text-halo-width": 2,
+          "text-opacity": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            3,
+            0.6,
+            4,
+            0.8,
+            5.5,
+            1,
+            6,
+            0,
+          ],
+        },
+      },
       {
         id: "city-labels",
         type: "symbol",

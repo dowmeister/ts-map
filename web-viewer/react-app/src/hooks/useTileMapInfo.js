@@ -6,7 +6,7 @@ export function useTileMapInfo(game) {
   useEffect(() => {
     async function loadTileMapInfo() {
       try {
-        const baseUrl = import.meta.env.VITE_OVERLAY_IMAGES_BASE_URL || '/map_data'
+        const baseUrl = import.meta.env.VITE_MAP_DATA_URL || 'http://localhost:8888'
         const response = await fetch(`${baseUrl}/${game}/VectorTileMapInfo.json`)
         const data = await response.json()
         setTileMapInfo({ ...data, game })

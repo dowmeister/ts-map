@@ -81,6 +81,8 @@
     <Compile Include="FileSystem\libdeflate\LibdeflateWrapper.cs" />
     <Compile Include="FileSystem\Zip\ZipEntry.cs" />
     <Compile Include="GeoJsonExporter.cs" />
+    <Compile Include="MapBackgroundExporter.cs" />
+    <Compile Include="MapProjection.cs" />
     <Compile Include="LocalizationManager.cs" />
     <Compile Include="Helpers\Logger\LogLevel.cs" />
     <Compile Include="Helpers\MemoryHelper.cs" />

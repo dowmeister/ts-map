@@ -74,6 +74,8 @@ namespace TsMap
         /// will be loaded. Set before calling <see cref="Parse"/>.
         /// Example: <c>new List&lt;string&gt; { "europe" }</c>
         /// </summary>
+        public IEnumerable<TsCountry> Countries => _countriesLookup.Values;
+
         public IReadOnlyList<string> MapFilter { get; set; } = null;
 
         public TsMapper(string gameDir, List<Mod> mods)
