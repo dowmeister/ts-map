@@ -1,25 +1,79 @@
 import type { GraphNode, MapBounds } from './types';
 import type { RouteResult } from './types';
 
+const EARTH_RADIUS_METERS = 6370997.0;
+const LENGTH_OF_DEGREE = EARTH_RADIUS_METERS * Math.PI / 180.0;
+
 interface TileMapInfo {
   x1: number;  // minX
   x2: number;  // maxX
   y1: number;  // minZ  (the JS file uses y for game Z axis)
   y2: number;  // maxZ
+  projection?: MapBounds['projection'];
+}
+
+interface ProjectionValues {
+  type: string;
+  standardParallel1: number;
+  standardParallel2: number;
+  originLat: number;
+  originLon: number;
+  offsetX: number;
+  offsetZ: number;
+  factorZ: number;
+  factorX: number;
+  useEts2UkScale: boolean;
+}
+
+function toTileMapInfo(bounds: MapBounds): TileMapInfo {
+  return {
+    x1: bounds.minX,
+    x2: bounds.maxX,
+    y1: bounds.minZ,
+    y2: bounds.maxZ,
+    projection: bounds.projection,
+  };
+}
+
+function projectionValues(tileMapInfo: TileMapInfo): ProjectionValues | null {
+  const p = tileMapInfo.projection;
+  if (!p) return null;
+
+  const [originLat, originLon] = p.map_origin;
+  const [offsetX, offsetZ] = p.map_offset;
+  const [factorZ, factorX] = p.map_factor;
+
+  return {
+    type: p.type,
+    standardParallel1: p.standard_parallel_1,
+    standardParallel2: p.standard_parallel_2,
+    originLat,
+    originLon,
+    offsetX,
+    offsetZ,
+    factorZ,
+    factorX,
+    useEts2UkScale: !!p.use_ets2_uk_scale,
+  };
+}
+
+function tanHalf(phi: number): number {
+  return Math.tan(Math.PI / 4 + phi / 2);
+}
+
+function lccParams(p: ProjectionValues): { n: number; f: number; rho0: number; lambda0: number } {
+  const phi1 = p.standardParallel1 * Math.PI / 180;
+  const phi2 = p.standardParallel2 * Math.PI / 180;
+  const phi0 = p.originLat * Math.PI / 180;
+  const lambda0 = p.originLon * Math.PI / 180;
+  const n = Math.log(Math.cos(phi1) / Math.cos(phi2)) / Math.log(tanHalf(phi2) / tanHalf(phi1));
+  const f = Math.cos(phi1) * Math.pow(tanHalf(phi1), n) / n;
+  const rho0 = EARTH_RADIUS_METERS * f / Math.pow(tanHalf(phi0), n);
+  return { n, f, rho0, lambda0 };
 }
 
 export function wgs84ToGame(lon: number, lat: number, bounds: MapBounds): [number, number] {
-  const { minX, maxX, minZ, maxZ } = bounds;
-  const width = maxX - minX;
-  const height = maxZ - minZ;
-  const aspectRatio = width / height;
-  const maxExtent = 70.0;
-  let lonRange: number, latRange: number;
-  if (aspectRatio > 1.0) { lonRange = maxExtent; latRange = maxExtent / aspectRatio; }
-  else                   { latRange = maxExtent; lonRange = maxExtent * aspectRatio; }
-  const normalizedX = (lon + lonRange / 2) / lonRange;
-  const normalizedZ = (latRange / 2 - lat) / latRange;
-  return [normalizedX * width + minX, normalizedZ * height + minZ];
+  return mapToGameCoords(lon, lat, toTileMapInfo(bounds));
 }
 
 export function ets2ToWgs84(
@@ -27,17 +81,10 @@ export function ets2ToWgs84(
   gameZ: number,
   bounds: MapBounds,
 ): [number, number] {
-  const tileMapInfo: TileMapInfo = {
-    x1: bounds.minX,
-    x2: bounds.maxX,
-    y1: bounds.minZ,
-    y2: bounds.maxZ,
-  };
-  return gameToMapCoords(gameX, gameZ, tileMapInfo);
+  return gameToMapCoords(gameX, gameZ, toTileMapInfo(bounds));
 }
 
-// WGS84 projection — field names and formula match the web viewer's coordinates.js.
-function gameToMapCoords(
+function legacyGameToMapCoords(
   gameX: number,
   gameZ: number,
   tileMapInfo: TileMapInfo,
@@ -70,17 +117,133 @@ function gameToMapCoords(
   return [lon, lat];
 }
 
-// Chaikin curve subdivision — 1 pass halves C2 discontinuities at knot junctions.
-// Endpoints are preserved exactly.
-export function chaikin(pts: [number, number][]): [number, number][] {
-  if (pts.length < 3) return pts;
-  const out: [number, number][] = [pts[0]];
-  for (let i = 0; i < pts.length - 1; i++) {
-    const [x0, y0] = pts[i];
-    const [x1, y1] = pts[i + 1];
-    out.push([0.75 * x0 + 0.25 * x1, 0.75 * y0 + 0.25 * y1]);
-    out.push([0.25 * x0 + 0.75 * x1, 0.25 * y0 + 0.75 * y1]);
+function legacyMapToGameCoords(lon: number, lat: number, tileMapInfo: TileMapInfo): [number, number] {
+  const minX = tileMapInfo.x1;
+  const maxX = tileMapInfo.x2;
+  const minZ = tileMapInfo.y1;
+  const maxZ = tileMapInfo.y2;
+  const width = maxX - minX;
+  const height = maxZ - minZ;
+  const maxExtent = 70.0;
+  const aspectRatio = width / height;
+  const lonRange = aspectRatio > 1.0 ? maxExtent : maxExtent * aspectRatio;
+  const latRange = aspectRatio > 1.0 ? maxExtent / aspectRatio : maxExtent;
+  const normalizedX = (lon + lonRange / 2.0) / lonRange;
+  const normalizedZ = (latRange / 2.0 - lat) / latRange;
+  return [minX + normalizedX * width, minZ + normalizedZ * height];
+}
+
+// WGS84 projection — field names and formula match the web viewer's coordinates.js.
+function gameToMapCoords(
+  gameX: number,
+  gameZ: number,
+  tileMapInfo: TileMapInfo,
+): [number, number] {
+  const p = projectionValues(tileMapInfo);
+  if (!p) return legacyGameToMapCoords(gameX, gameZ, tileMapInfo);
+
+  if (p.type !== 'lambert_conic') {
+    return [
+      p.originLon + (gameX - p.offsetZ) * p.factorX,
+      p.originLat + (gameZ - p.offsetX) * p.factorZ,
+    ];
   }
+
+  let x = gameX - p.offsetX;
+  let z = gameZ - p.offsetZ;
+
+  if (p.useEts2UkScale) {
+    const ukScale = 0.75;
+    const calaisX = -31100.0;
+    const calaisZ = -5500.0;
+    if (x * ukScale < calaisX && z * ukScale < calaisZ) {
+      x = (x + calaisX / 2) * ukScale;
+      z = (z + calaisZ / 2) * ukScale;
+    }
+  }
+
+  const lccX = x * p.factorX * LENGTH_OF_DEGREE;
+  const lccY = z * p.factorZ * LENGTH_OF_DEGREE;
+  const { n, f, rho0, lambda0 } = lccParams(p);
+  let rho = Math.sqrt(lccX * lccX + (rho0 - lccY) * (rho0 - lccY));
+  if (n < 0) rho = -rho;
+  const theta = Math.atan2(lccX, rho0 - lccY);
+  const lat = 2 * Math.atan(Math.pow(EARTH_RADIUS_METERS * f / rho, 1 / n)) - Math.PI / 2;
+  const lon = lambda0 + theta / n;
+  return [lon * 180 / Math.PI, lat * 180 / Math.PI];
+}
+
+function mapToGameCoords(lon: number, lat: number, tileMapInfo: TileMapInfo): [number, number] {
+  const p = projectionValues(tileMapInfo);
+  if (!p) return legacyMapToGameCoords(lon, lat, tileMapInfo);
+
+  if (p.type !== 'lambert_conic') {
+    return [
+      (lon - p.originLon) / p.factorX + p.offsetZ,
+      (lat - p.originLat) / p.factorZ + p.offsetX,
+    ];
+  }
+
+  const { n, f, rho0, lambda0 } = lccParams(p);
+  const phi = lat * Math.PI / 180;
+  const lambda = lon * Math.PI / 180;
+  const rho = EARTH_RADIUS_METERS * f / Math.pow(tanHalf(phi), n);
+  const theta = n * (lambda - lambda0);
+  const lccX = rho * Math.sin(theta);
+  const lccY = rho0 - rho * Math.cos(theta);
+
+  let x = lccX / p.factorX / LENGTH_OF_DEGREE;
+  let z = lccY / p.factorZ / LENGTH_OF_DEGREE;
+
+  if (p.useEts2UkScale) {
+    const ukScale = 0.75;
+    const calaisX = -31100.0;
+    const calaisZ = -5500.0;
+    if (x < calaisX * (1 + ukScale / 2) && z < calaisZ * (1 + ukScale / 2)) {
+      x = x / ukScale - calaisX / 2;
+      z = z / ukScale - calaisZ / 2;
+    }
+  }
+
+  return [x + p.offsetX, z + p.offsetZ];
+}
+
+// Chaikin curve subdivision — selective: only rounds corners where direction changes
+// more than thresholdDeg degrees. Straight or near-straight segments are kept as-is,
+// avoiding false bumps at road→prefab junctions on straight roads.
+// Endpoints are preserved exactly.
+export function chaikin(pts: [number, number][], thresholdDeg = 8): [number, number][] {
+  if (pts.length < 3) return pts;
+  const threshold = thresholdDeg * Math.PI / 180;
+  const out: [number, number][] = [pts[0]];
+
+  for (let i = 1; i < pts.length - 1; i++) {
+    const [px, py] = pts[i - 1];
+    const [cx, cy] = pts[i];
+    const [nx, ny] = pts[i + 1];
+
+    const dx1 = cx - px, dy1 = cy - py;
+    const dx2 = nx - cx, dy2 = ny - cy;
+    const len1 = Math.hypot(dx1, dy1);
+    const len2 = Math.hypot(dx2, dy2);
+
+    if (len1 < 1e-10 || len2 < 1e-10) {
+      out.push([cx, cy]);
+      continue;
+    }
+
+    const dot = (dx1 * dx2 + dy1 * dy2) / (len1 * len2);
+    const angle = Math.acos(Math.max(-1, Math.min(1, dot)));
+
+    if (angle > threshold) {
+      // Real corner: replace with the two Chaikin cut points
+      out.push([0.25 * px + 0.75 * cx, 0.25 * py + 0.75 * cy]);
+      out.push([0.75 * cx + 0.25 * nx, 0.75 * cy + 0.25 * ny]);
+    } else {
+      out.push([cx, cy]);
+    }
+  }
+
   out.push(pts[pts.length - 1]);
   return out;
 }

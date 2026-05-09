@@ -32,11 +32,22 @@ export interface RouteResult {
   ferryLength: number;   // ferry edges only
 }
 
+export interface MapProjection {
+  type: string;
+  standard_parallel_1: number;
+  standard_parallel_2: number;
+  map_origin: [number, number];
+  map_offset: [number, number];
+  map_factor: [number, number];
+  use_ets2_uk_scale?: boolean;
+}
+
 export interface MapBounds {
   minX: number;
   maxX: number;
   minZ: number;
   maxZ: number;
+  projection?: MapProjection;
 }
 
 export interface LoadedGraph {

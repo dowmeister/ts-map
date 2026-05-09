@@ -1,12 +1,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import type { GraphEdge, GraphNode, LoadedGraph, MapBounds, RoutingGraph } from './types';
+import type { GraphEdge, GraphNode, LoadedGraph, MapBounds, MapProjection, RoutingGraph } from './types';
 
 interface VectorTileMapInfo {
   x1: number;  // minX
   x2: number;  // maxX
   y1: number;  // minZ  (game Z axis)
   y2: number;  // maxZ
+  projection?: MapProjection;
 }
 
 // Read VectorTileMapInfo.json — the authoritative map bounds used by the web viewer.
@@ -15,7 +16,13 @@ export function loadMapBounds(mapDataPath: string, game: string): MapBounds {
   const infoPath = path.join(mapDataPath, game, 'VectorTileMapInfo.json');
   const raw = fs.readFileSync(path.resolve(infoPath), 'utf-8');
   const info: VectorTileMapInfo = JSON.parse(raw) as VectorTileMapInfo;
-  return { minX: info.x1, maxX: info.x2, minZ: info.y1, maxZ: info.y2 };
+  return {
+    minX: info.x1,
+    maxX: info.x2,
+    minZ: info.y1,
+    maxZ: info.y2,
+    projection: info.projection,
+  };
 }
 
 export function loadGraph(graphPath: string, bounds: MapBounds): LoadedGraph {
