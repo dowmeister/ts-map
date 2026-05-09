@@ -395,10 +395,10 @@ export function createMapStyle(game, mapInfo = null) {
         source: "map",
         "source-layer": "countries",
         minzoom: 3,
-        maxzoom: 6,
+        maxzoom: 5,
         layout: {
           "text-field": ["get", "name"],
-          "text-font": ["Klokantech Noto Sans Regular"],
+          "text-font": ["Klokantech Noto Sans Bold"],
           "text-size": [
             "interpolate",
             ["linear"],
@@ -418,7 +418,7 @@ export function createMapStyle(game, mapInfo = null) {
           "text-letter-spacing": 0.15,
         },
         paint: {
-          "text-color": "#D4B896",
+          "text-color": "#FFFFFF",
           "text-halo-color": "#0F1C26",
           "text-halo-width": 2,
           "text-opacity": [
@@ -429,9 +429,9 @@ export function createMapStyle(game, mapInfo = null) {
             0.6,
             4,
             0.8,
-            5.5,
+            4.75,
             1,
-            6,
+            5,
             0,
           ],
         },
@@ -464,9 +464,10 @@ export function createMapStyle(game, mapInfo = null) {
           "text-ignore-placement": false,
         },
         paint: {
-          "text-color": "#C0A882",
+          "text-color": "#E8EEF2",
           "text-halo-color": "#1A2733",
           "text-halo-width": 2.5,
+          "text-opacity": 0.9,
         },
       },
       // ── Route display ─────────────────────────────────────────────────────
