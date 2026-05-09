@@ -8,7 +8,7 @@ function MapViewer({ game, initialPosition, onMapLoad, onZoomChange, onBoundsCha
   const mapContainer = useRef(null)
   const map = useRef(null)
   const callbacksRef = useRef({ onMapLoad, onZoomChange, onBoundsChange, onPositionChange })
-  const isFirstGame = useRef(true)
+  const prevGameRef = useRef(game)
 
   // Keep callbacks ref up to date
   useEffect(() => {
@@ -77,10 +77,8 @@ function MapViewer({ game, initialPosition, onMapLoad, onZoomChange, onBoundsCha
 
   // Update style when game changes and reset to default center
   useEffect(() => {
-    if (isFirstGame.current) {
-      isFirstGame.current = false
-      return
-    }
+    if (prevGameRef.current === game) return
+    prevGameRef.current = game
     if (!map.current) return
     const defaultCenter = [
       parseFloat(import.meta.env.VITE_MAP_DEFAULT_CENTER_LON || 0),
