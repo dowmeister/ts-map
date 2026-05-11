@@ -384,6 +384,12 @@ namespace TsMap.Routing
 
                 if (best == null) continue;
                 usedPrefabEndpoints.Add(best);
+                ApplyEndpointSnap(roadEndpoint, best.X, best.Z);
+                if (_nodes.TryGetValue(roadEndpoint.Id, out var node))
+                {
+                    node.X = best.X;
+                    node.Z = best.Z;
+                }
 
                 _edges.Add(new LaneDebugEdge
                 {
@@ -398,6 +404,25 @@ namespace TsMap.Routing
             }
 
             Logger.Instance.Info($"[LaneGraphDebug] Matched {snapped} road lane endpoints to prefab endpoints");
+        }
+
+        private static void ApplyEndpointSnap(LaneEndpoint endpoint, float targetX, float targetZ)
+        {
+            var path = endpoint.Edge.Path;
+            int n = path.Length;
+            int maxPoints = Math.Min(5, n);
+            int anchor = endpoint.AtStart ? 0 : n - 1;
+            float dx = targetX - path[anchor][0];
+            float dz = targetZ - path[anchor][1];
+
+            for (int k = 0; k < maxPoints; k++)
+            {
+                int idx = endpoint.AtStart ? k : n - 1 - k;
+                float t = 1f - k / (float)maxPoints;
+                t = t * t * (3f - 2f * t);
+                path[idx][0] += dx * t;
+                path[idx][1] += dz * t;
+            }
         }
 
         private static IEnumerable<LaneEndpoint> NearbyPrefabEndpoints(
