@@ -3,7 +3,7 @@ import * as path from 'path';
 import { Router, Request, Response } from 'express';
 import { loadGraph, loadMapBounds } from './loader';
 import { setGraphState, getAvailableGames } from './state';
-import { graphDebugHandler, loadEdgePaths, prefabPathsCache } from './debug';
+import { graphDebugHandler, laneGraphDebugHandler, loadEdgePaths, prefabPathsCache } from './debug';
 import { MainComponentIndex } from './component';
 import { SpatialIndex } from './spatial-index';
 import { findNearestMainComponent, findNearestWithHeading } from './nearest';
@@ -21,11 +21,16 @@ interface GameRuntime {
 
 const runtimes: Record<string, GameRuntime> = {};
 const companiesCache: Record<string, { name: string; id: string; x: number; z: number }[]> = {};
+const ROUTING_DEBUG_LOG = process.env['ROUTING_DEBUG_LOG'] !== 'false';
 
 let _mapDataPath: string;
 
 function getMapDataPath(): string {
   return _mapDataPath ?? (_mapDataPath = process.env['MAP_DATA_PATH'] ?? path.resolve(__dirname, '../../..', 'map_data'));
+}
+
+function logRoute(message: string): void {
+  if (ROUTING_DEBUG_LOG) console.log(message);
 }
 
 // ── Startup ───────────────────────────────────────────────────────────────────
@@ -165,8 +170,10 @@ router.get('/companies', (req: Request, res: Response) => {
 });
 
 router.get('/graph/debug', graphDebugHandler);
+router.get('/lane-graph/debug', laneGraphDebugHandler);
 
 router.get('/route', (req: Request, res: Response) => {
+  const requestT0 = Date.now();
   const game = resolveGame(req);
   const rt = getRuntimeOrError(res, game);
   if (!rt) return;
@@ -182,6 +189,9 @@ router.get('/route', (req: Request, res: Response) => {
   const tx = parseFloat(toX as string);
   const tz = parseFloat(toZ as string);
   const heading = fromHeading ? parseFloat(fromHeading as string) : 0;
+  const routeMode = (mode === 'fastest' ? 'fastest' : 'shortest') as 'fastest' | 'shortest';
+
+  logRoute(`[Route:${game}] request mode=${routeMode} from=(${fx.toFixed(1)},${fz.toFixed(1)}) to=(${tx.toFixed(1)},${tz.toFixed(1)}) heading=${fromHeading ? heading.toFixed(1) : 'none'} avoidHighways=${avoidHighways === 'true'} avoidFerries=${avoidFerries === 'true'}`);
 
   if (isNaN(fx) || isNaN(fz) || isNaN(tx) || isNaN(tz)) {
     res.status(400).json({ error: 'Required: fromX, fromZ, toX, toZ (numeric)' });
@@ -194,31 +204,40 @@ router.get('/route', (req: Request, res: Response) => {
 
   const marginX = (maxX - minX) * 0.1, marginZ = (maxZ - minZ) * 0.1;
   if (fx < minX - marginX || fx > maxX + marginX || fz < minZ - marginZ || fz > maxZ + marginZ) {
+    logRoute(`[Route:${game}] rejected: start outside bounds`);
     res.status(404).json({ error: 'Start position outside map bounds' });
     return;
   }
   if (tx < minX - marginX || tx > maxX + marginX || tz < minZ - marginZ || tz > maxZ + marginZ) {
+    logRoute(`[Route:${game}] rejected: destination outside bounds`);
     res.status(404).json({ error: 'Destination outside map bounds' });
     return;
   }
 
+  const snapT0 = Date.now();
   const headingSnap = fromHeading
     ? findNearestWithHeading(fx, fz, heading, spatialIndex, loadedGraph.nodes, loadedGraph.adjacency, loadedGraph.bounds)
     : undefined;
   const startUid = headingSnap && isInMain(headingSnap)
     ? headingSnap
     : findNearestMainComponent(fx, fz, spatialIndex, isInMain);
+  const snapMs = Date.now() - snapT0;
 
   if (!startUid) {
+    logRoute(`[Route:${game}] rejected: start not connected snapMs=${snapMs}`);
     res.status(404).json({ error: 'Start position not connected to main road network' });
     return;
   }
 
+  const goalSnapT0 = Date.now();
   const goalUid = findNearestMainComponent(tx, tz, spatialIndex, isInMain);
+  const goalSnapMs = Date.now() - goalSnapT0;
   if (!goalUid) {
+    logRoute(`[Route:${game}] rejected: destination not connected start=${startUid} snapMs=${snapMs} goalSnapMs=${goalSnapMs}`);
     res.status(404).json({ error: 'Destination not connected to main road network' });
     return;
   }
+  logRoute(`[Route:${game}] snapped start=${startUid}${headingSnap ? ` headingSnap=${headingSnap}` : ''} goal=${goalUid} snapMs=${snapMs}+${goalSnapMs}`);
 
   let blockedNodes: Set<string> | undefined;
   if (avoidPoints) {
@@ -227,11 +246,14 @@ router.get('/route', (req: Request, res: Response) => {
       blockedNodes = new Set(
         pts.map(p => findNearestMainComponent(p.x, p.z, spatialIndex, isInMain)).filter((u): u is string => !!u)
       );
-    } catch { /* ignore malformed input */ }
+      logRoute(`[Route:${game}] avoidPoints=${pts.length} blockedNodes=${blockedNodes.size}`);
+    } catch (err) {
+      logRoute(`[Route:${game}] malformed avoidPoints ignored: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   const routeOptions = {
-    mode:          (mode === 'fastest' ? 'fastest' : 'shortest') as 'fastest' | 'shortest',
+    mode:          routeMode,
     avoidHighways: avoidHighways === 'true',
     avoidFerries:  avoidFerries  === 'true',
     blockedNodes,
@@ -242,6 +264,7 @@ router.get('/route', (req: Request, res: Response) => {
   const routeMs = Date.now() - t0;
 
   if (!result) {
+    logRoute(`[Route:${game}] no route start=${startUid} goal=${goalUid} routeMs=${routeMs} totalMs=${Date.now() - requestT0}`);
     res.status(404).json({ error: 'No route found between the given positions' });
     return;
   }
@@ -260,7 +283,10 @@ router.get('/route', (req: Request, res: Response) => {
 
   loadEdgePaths(game);
   const edgePaths = prefabPathsCache[game] ?? {};
+  const geoT0 = Date.now();
   const geoJson = routeToGeoJson(result, loadedGraph.nodes, loadedGraph.bounds, edgePaths);
+  const geoMs = Date.now() - geoT0;
+  logRoute(`[Route:${game}] ok start=${startUid} goal=${goalUid} nodes=${result.path.length} length=${Math.round(result.totalLength)}m km=${totalLengthKm} routeMs=${routeMs} geoMs=${geoMs} totalMs=${Date.now() - requestT0}`);
   res.json({
     game,
     mode: routeOptions.mode,

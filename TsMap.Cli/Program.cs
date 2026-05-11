@@ -266,6 +266,9 @@ namespace TsMap.Cli
                         var graphExporter = new GraphExporter(capturedGraph);
                         graphExporter.Export(Path.Combine(geoJsonPath, "routing-graph.json"));
                         graphExporter.ExportPrefabPaths(Path.Combine(geoJsonPath, "routing-edge-paths.json"));
+                        var laneGraphDebugExporter = new LaneGraphDebugExporter(mapper);
+                        laneGraphDebugExporter.Export(Path.Combine(geoJsonPath, "routing-lane-graph-debug.json"));
+                        laneGraphDebugExporter.ExportGeoJson(Path.Combine(geoJsonPath, "routing-lane-graph-debug.geojson"));
                         Console.ForegroundColor = ConsoleColor.Green;
                         Console.WriteLine($"✓ ({capturedGraph.Nodes.Count:N0} nodes, {capturedGraph.Edges.Count:N0} edges)");
                         Console.ResetColor();

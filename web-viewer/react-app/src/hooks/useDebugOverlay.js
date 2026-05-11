@@ -66,12 +66,12 @@ export function useDebugOverlay(mapInstance, tileMapInfo, enabled) {
     if (!mapInstance || !tileMapInfo || !enabledRef.current) return
 
     const zoom   = mapInstance.getZoom()
-    const source = mapInstance.getSource('graph-debug')
-    if (!source) return
+    const laneSource = mapInstance.getSource('lane-graph-debug')
+    if (!laneSource) return
 
     // Zoom gate on the client — no request below threshold
     if (zoom < 9) {
-      source.setData({ type: 'FeatureCollection', features: [] })
+      laneSource.setData({ type: 'FeatureCollection', features: [] })
       return
     }
 
@@ -82,13 +82,14 @@ export function useDebugOverlay(mapInstance, tileMapInfo, enabled) {
     const minZ = Math.min(swZ, neZ), maxZ = Math.max(swZ, neZ)
 
     const game = tileMapInfo?.game || 'ets2'
-    const url = `${ROUTING_BASE}/api/graph/debug?game=${game}&minX=${minX}&maxX=${maxX}&minZ=${minZ}&maxZ=${maxZ}`
+    const laneUrl = `${ROUTING_BASE}/api/lane-graph/debug?game=${game}&minX=${minX}&maxX=${maxX}&minZ=${minZ}&maxZ=${maxZ}`
 
     try {
-      const res = await fetch(url)
-      if (!res.ok) return
-      const geojson = await res.json()
-      source.setData(geojson)
+      const laneRes = await fetch(laneUrl)
+      if (laneRes.ok) {
+        const laneGeojson = await laneRes.json()
+        laneSource.setData(withLaneArrows(laneGeojson))
+      }
     } catch {
       // Network errors: silently ignore (dev server may be stopped)
     }
@@ -110,55 +111,58 @@ export function useDebugOverlay(mapInstance, tileMapInfo, enabled) {
       fetchDebugData()
 
       // Click popups
-      mapInstance.on('click', 'graph-debug-edges', onEdgeClick)
-      mapInstance.on('click', 'graph-debug-nodes', onNodeClick)
-      mapInstance.on('mouseenter', 'graph-debug-edges', setCursorPointer)
-      mapInstance.on('mouseleave', 'graph-debug-edges', resetCursor)
+      mapInstance.on('click', 'lane-graph-debug-edges', onLaneEdgeClick)
+      mapInstance.on('click', 'lane-graph-debug-nodes', onLaneNodeClick)
+      mapInstance.on('mouseenter', 'lane-graph-debug-edges', setCursorPointer)
+      mapInstance.on('mouseleave', 'lane-graph-debug-edges', resetCursor)
     } else {
       mapInstance.off('moveend', debouncedFetch)
       mapInstance.off('zoomend', debouncedFetch)
-      mapInstance.off('click', 'graph-debug-edges', onEdgeClick)
-      mapInstance.off('click', 'graph-debug-nodes', onNodeClick)
-      mapInstance.off('mouseenter', 'graph-debug-edges', setCursorPointer)
-      mapInstance.off('mouseleave', 'graph-debug-edges', resetCursor)
+      mapInstance.off('click', 'lane-graph-debug-edges', onLaneEdgeClick)
+      mapInstance.off('click', 'lane-graph-debug-nodes', onLaneNodeClick)
+      mapInstance.off('mouseenter', 'lane-graph-debug-edges', setCursorPointer)
+      mapInstance.off('mouseleave', 'lane-graph-debug-edges', resetCursor)
 
       const source = mapInstance.getSource('graph-debug')
       if (source) source.setData({ type: 'FeatureCollection', features: [] })
+      const laneSource = mapInstance.getSource('lane-graph-debug')
+      if (laneSource) laneSource.setData({ type: 'FeatureCollection', features: [] })
       if (popupRef.current) { popupRef.current.remove(); popupRef.current = null }
     }
 
     return () => {
       mapInstance.off('moveend', debouncedFetch)
       mapInstance.off('zoomend', debouncedFetch)
-      mapInstance.off('click', 'graph-debug-edges', onEdgeClick)
-      mapInstance.off('click', 'graph-debug-nodes', onNodeClick)
-      mapInstance.off('mouseenter', 'graph-debug-edges', setCursorPointer)
-      mapInstance.off('mouseleave', 'graph-debug-edges', resetCursor)
+      mapInstance.off('click', 'lane-graph-debug-edges', onLaneEdgeClick)
+      mapInstance.off('click', 'lane-graph-debug-nodes', onLaneNodeClick)
+      mapInstance.off('mouseenter', 'lane-graph-debug-edges', setCursorPointer)
+      mapInstance.off('mouseleave', 'lane-graph-debug-edges', resetCursor)
     }
   }, [enabled, mapInstance, debouncedFetch])
 
-  function onEdgeClick(e) {
+  function onLaneEdgeClick(e) {
     const p = e.features[0].properties
     if (popupRef.current) popupRef.current.remove()
     popupRef.current = new maplibregl.Popup()
       .setLngLat(e.lngLat)
-      .setHTML(`<strong>Edge</strong><br/>
+      .setHTML(`<strong>Lane edge</strong><br/>
         from: <code>${p.from}</code><br/>
         to: <code>${p.to}</code><br/>
-        type: <b>${p.itemType}</b><br/>
-        speed: ${p.speedClass}<br/>
-        length: ${Math.round(p.length)} m<br/>
-        weight: ${Math.round(p.weight)}`)
+        kind: <b>${p.kind}</b><br/>
+        lane: <code>${p.lane || ''}</code><br/>
+        source: <code>${p.sourceUid || ''}</code>`)
       .addTo(mapInstance)
   }
 
-  function onNodeClick(e) {
+  function onLaneNodeClick(e) {
     const p = e.features[0].properties
     if (popupRef.current) popupRef.current.remove()
     popupRef.current = new maplibregl.Popup()
       .setLngLat(e.lngLat)
-      .setHTML(`<strong>Node</strong><br/>
-        uid: <code>${p.uid}</code><br/>
+      .setHTML(`<strong>Lane node</strong><br/>
+        id: <code>${p.id}</code><br/>
+        kind: <b>${p.kind}</b><br/>
+        lane: <code>${p.lane || ''}</code><br/>
         x: ${Number(p.x).toFixed(1)}<br/>
         z: ${Number(p.z).toFixed(1)}`)
       .addTo(mapInstance)
@@ -171,4 +175,72 @@ export function useDebugOverlay(mapInstance, tileMapInfo, enabled) {
 function showMessage(map, text) {
   // Brief toast-style console log — full UI toast can be added later
   console.info('[DebugOverlay]', text)
+}
+
+function withLaneArrows(geojson) {
+  if (!geojson?.features) return geojson
+
+  const nonArrowFeatures = geojson.features.filter(f => f?.properties?.featureType !== 'arrow')
+  const arrows = []
+
+  for (const feature of nonArrowFeatures) {
+    if (feature?.properties?.featureType !== 'edge') continue
+    if (feature?.geometry?.type !== 'LineString') continue
+
+    const arrow = arrowOnLine(feature.geometry.coordinates, 0.7)
+    if (!arrow) continue
+
+    arrows.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [arrow.lon, arrow.lat] },
+      properties: {
+        featureType: 'arrow',
+        bearing: arrow.bearing,
+        kind: feature.properties.kind,
+        sourceUid: feature.properties.sourceUid,
+        lane: feature.properties.lane,
+      },
+    })
+  }
+
+  return {
+    ...geojson,
+    features: [...nonArrowFeatures, ...arrows],
+  }
+}
+
+function arrowOnLine(coords, ratio) {
+  if (!coords || coords.length < 2) return null
+
+  let totalLen = 0
+  const segLens = []
+  for (let i = 1; i < coords.length; i++) {
+    const dl = Math.hypot(coords[i][0] - coords[i - 1][0], coords[i][1] - coords[i - 1][1])
+    segLens.push(dl)
+    totalLen += dl
+  }
+  if (totalLen < 1e-12) return null
+
+  const target = totalLen * ratio
+  let accumulated = 0
+  let segIdx = 0
+  for (let i = 0; i < segLens.length; i++) {
+    if (accumulated + segLens[i] >= target) {
+      segIdx = i
+      break
+    }
+    accumulated += segLens[i]
+  }
+
+  const t = segLens[segIdx] > 1e-12 ? (target - accumulated) / segLens[segIdx] : 0
+  const c0 = coords[segIdx]
+  const c1 = coords[segIdx + 1]
+  const dLon = c1[0] - c0[0]
+  const dLat = c1[1] - c0[1]
+
+  return {
+    lon: c0[0] + dLon * t,
+    lat: c0[1] + dLat * t,
+    bearing: (Math.atan2(dLon, dLat) * 180 / Math.PI + 360) % 360,
+  }
 }

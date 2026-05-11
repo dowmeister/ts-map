@@ -190,6 +190,10 @@ export function createMapStyle(game, mapInfo = null) {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
       },
+      "lane-graph-debug": {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      },
       route: {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
@@ -534,6 +538,7 @@ export function createMapStyle(game, mapInfo = null) {
         type: "line",
         source: "graph-debug",
         filter: ["==", ["get", "featureType"], "edge"],
+        layout: { visibility: "none" },
         paint: {
           "line-color": [
             "match",
@@ -566,6 +571,7 @@ export function createMapStyle(game, mapInfo = null) {
         source: "graph-debug",
         filter: ["==", ["get", "featureType"], "arrow"],
         layout: {
+          visibility: "none",
           "icon-image": "route-arrow",
           "icon-rotate": ["get", "bearing"],
           "icon-rotation-alignment": "map",
@@ -594,12 +600,88 @@ export function createMapStyle(game, mapInfo = null) {
         type: "circle",
         source: "graph-debug",
         filter: ["==", ["get", "featureType"], "node"],
+        layout: { visibility: "none" },
         paint: {
           "circle-radius": ["interpolate", ["linear"], ["zoom"], 9, 1.5, 12, 4],
           "circle-color": "#FFFFFF",
           "circle-stroke-color": "#333333",
           "circle-stroke-width": 1,
           "circle-opacity": 0.9,
+        },
+      },
+      // ── Lane graph debug overlay ──────────────────────────────────────────
+      {
+        id: "lane-graph-debug-edges",
+        type: "line",
+        source: "lane-graph-debug",
+        filter: ["==", ["get", "featureType"], "edge"],
+        paint: {
+          "line-color": [
+            "match",
+            ["get", "kind"],
+            "road",
+            "#00A6FF",
+            "prefab",
+            "#FF2D2D",
+            "#B8B8B8",
+          ],
+          "line-width": ["interpolate", ["linear"], ["zoom"], 9, 1.2, 13, 2.4],
+          "line-opacity": 0.95,
+        },
+      },
+      {
+        id: "lane-graph-debug-arrows",
+        type: "symbol",
+        source: "lane-graph-debug",
+        filter: ["==", ["get", "featureType"], "arrow"],
+        layout: {
+          "icon-image": "route-arrow",
+          "icon-rotate": ["get", "bearing"],
+          "icon-rotation-alignment": "map",
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
+          "icon-size": ["interpolate", ["linear"], ["zoom"], 9, 0.75, 13, 1.05],
+        },
+        paint: {
+          "icon-color": [
+            "match",
+            ["get", "kind"],
+            "road",
+            "#00A6FF",
+            "prefab",
+            "#FF2D2D",
+            "#B8B8B8",
+          ],
+          "icon-opacity": 0.95,
+        },
+      },
+      {
+        id: "lane-graph-debug-nodes",
+        type: "circle",
+        source: "lane-graph-debug",
+        filter: ["==", ["get", "featureType"], "node"],
+        paint: {
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 9, 1.8, 12, 4.5],
+          "circle-color": [
+            "match",
+            ["get", "kind"],
+            "road",
+            "#D8F2FF",
+            "prefab",
+            "#FFD6D6",
+            "#FFFFFF",
+          ],
+          "circle-stroke-color": [
+            "match",
+            ["get", "kind"],
+            "road",
+            "#006DAA",
+            "prefab",
+            "#A30000",
+            "#333333",
+          ],
+          "circle-stroke-width": 1.2,
+          "circle-opacity": 0.95,
         },
       },
       // ── Speed camera markers ───────────────────────────────────────────────

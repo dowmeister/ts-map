@@ -111,6 +111,7 @@
     <Compile Include="Routing\GraphValidator.cs" />
     <Compile Include="Routing\GraphExporter.cs" />
     <Compile Include="Routing\GraphNode.cs" />
+    <Compile Include="Routing\LaneGraphDebugExporter.cs" />
     <Compile Include="Routing\RoutingGraph.cs" />
     <Compile Include="Routing\RoutingGraphBuilder.cs" />
     <Compile Include="Routing\VehicleType.cs" />
