@@ -55,6 +55,8 @@ namespace TsMap
         public byte EndNodeIndex;     // leadsToNodes.endNode   @ +0x0C
         public float StartX, StartZ;  // local PPD start position @ +0x10, +0x18
         public float EndX,   EndZ;    // local PPD end position   @ +0x1C, +0x24
+        public float StartRotW, StartRotY; // startRot quaternion qw/qy @ +0x28, +0x30
+        public float EndRotW,   EndRotY;   // endRot quaternion qw/qy   @ +0x38, +0x40
         public float Length;          // m_length               @ +0x48
         public byte AllowedVehicles;  // flags bits 5-6 @ +0x08 (0=PlayerOnly,1=SmallVehicles,2=LargeVehicles,3=AllVehicles)
         public bool GpsAvoid;
@@ -187,6 +189,10 @@ namespace TsMap
                     StartZ          = MemoryHelper.ReadSingle(_stream, cb + 0x18),
                     EndX            = MemoryHelper.ReadSingle(_stream, cb + 0x1C),
                     EndZ            = MemoryHelper.ReadSingle(_stream, cb + 0x24),
+                    StartRotW       = MemoryHelper.ReadSingle(_stream, cb + 0x28),
+                    StartRotY       = MemoryHelper.ReadSingle(_stream, cb + 0x30),
+                    EndRotW         = MemoryHelper.ReadSingle(_stream, cb + 0x38),
+                    EndRotY         = MemoryHelper.ReadSingle(_stream, cb + 0x40),
                     Length          = MemoryHelper.ReadSingle(_stream, cb + 0x48),
                     AllowedVehicles = (byte)((flags >> 5) & 0x3),
                     GpsAvoid        = false,

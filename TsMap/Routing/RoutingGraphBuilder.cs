@@ -165,9 +165,6 @@ namespace TsMap.Routing
                     originWZ  = originWorldNode.Z;
                 }
 
-                int edgesAdded = 0;
-                var nodesWithOutEdge = new HashSet<int>();
-
                 for (int fromPpdIdx = 0; fromPpdIdx < descN; fromPpdIdx++)
                 {
                     var inputPts = desc.PrefabNodes[fromPpdIdx].InputPoints;
@@ -178,180 +175,308 @@ namespace TsMap.Routing
                     var fromNode = _mapper.GetNodeByUid(fromUid);
                     if (fromNode == null || IsZeroNode(fromNode)) continue;
 
-                    // BFS with predecessor tracking to reconstruct waypoint paths
-                    var visited     = new HashSet<int>();
-                    var queue       = new Queue<int>();
-                    var predecessor = new Dictionary<int, int>(); // curveIdx → prevCurveIdx (-1 = start)
-                    var reached     = new HashSet<int>();
+                    var candidateEdges = new List<PrefabLaneCandidate>();
 
-                    foreach (var ci in inputPts)
-                        if (visited.Add(ci)) { predecessor[ci] = -1; queue.Enqueue(ci); }
-
-                    while (queue.Count > 0)
+                    foreach (var inputLaneIdx in inputPts)
                     {
-                        int ci = queue.Dequeue();
-                        if (ci < 0 || ci >= desc.NavCurves.Count) continue;
-
-                        if (curveToOutputNode.TryGetValue(ci, out int toPpdIdx)
-                            && toPpdIdx != fromPpdIdx
-                            && reached.Add(toPpdIdx))
+                        foreach (var curvePath in GetCurvePaths(desc, curveToOutputNode, inputLaneIdx))
                         {
+                            int toPpdIdx = curvePath.EndNodeIndex;
+                            if (toPpdIdx == fromPpdIdx) continue;
+
                             var toUid = GetGlobalNodeUid(prefab.Nodes, prefab.Origin, (byte)toPpdIdx, descN);
-                            if (toUid != 0)
-                            {
-                                var toNode = _mapper.GetNodeByUid(toUid);
-                                if (toNode != null && !IsZeroNode(toNode))
-                                {
-                                    float len = Dist(fromNode, toNode);
-                                    if (len >= 0.001f)
-                                    {
-                                        // Reconstruct curve path for waypoints
-                                        float[][] waypoints = null;
-                                        if (hasTransform)
-                                        {
-                                            var path = new System.Collections.Generic.List<int>();
-                                            int cur = ci;
-                                            while (cur != -1)
-                                            {
-                                                path.Add(cur);
-                                                cur = predecessor.ContainsKey(cur) ? predecessor[cur] : -1;
-                                            }
-                                            path.Reverse();
-                                            waypoints = BuildNavCurveWaypoints(
-                                                path, desc, rotSin, rotCos,
-                                                originPpdX, originPpdZ, originWX, originWZ,
-                                                fromNode.X, fromNode.Z, toNode.X, toNode.Z);
-                                        }
-
-                                        RegisterNode(fromNode);
-                                        RegisterNode(toNode);
-                                        _graph.Edges.Add(new GraphEdge(
-                                            fromUid, toUid,
-                                            len * SpeedMult("local_road"), len, "local_road", "prefab",
-                                            waypoints));
-                                        edgesAdded++;
-                                        nodesWithOutEdge.Add(fromPpdIdx);
-                                    }
-                                }
-                            }
-                        }
-
-                        var nc = desc.NavCurves[ci];
-                        if (nc.NextLines != null)
-                            foreach (var next in nc.NextLines)
-                                if (next >= 0 && next < desc.NavCurves.Count && visited.Add(next))
-                                {
-                                    predecessor[next] = ci;
-                                    queue.Enqueue(next);
-                                }
-                    }
-                }
-
-                if (edgesAdded == 0)
-                {
-                    // NavCurves produced nothing at all — full-mesh for the whole prefab
-                    AddPrefabFullMesh(prefab);
-                }
-                else
-                {
-                    // Per-node fallback: only for nodes that HAD InputPoints but BFS
-                    // found no reachable output paths (broken/incomplete PPD data).
-                    // Exit-only nodes (empty InputPoints) are intentionally skipped —
-                    // they have no outgoing prefab edges by design and are reachable
-                    // via road edges; adding fallback would create wrong-way routes.
-                    for (int fromPpdIdx = 0; fromPpdIdx < descN; fromPpdIdx++)
-                    {
-                        if (nodesWithOutEdge.Contains(fromPpdIdx)) continue;
-                        var fallbackInputPts = desc.PrefabNodes[fromPpdIdx].InputPoints;
-                        if (fallbackInputPts == null || fallbackInputPts.Count == 0) continue;
-
-                        var fromUid = GetGlobalNodeUid(prefab.Nodes, prefab.Origin, (byte)fromPpdIdx, descN);
-                        if (fromUid == 0) continue;
-                        var fromNode = _mapper.GetNodeByUid(fromUid);
-                        if (fromNode == null || IsZeroNode(fromNode)) continue;
-
-                        for (int j = 0; j < descN; j++)
-                        {
-                            if (j == fromPpdIdx) continue;
-                            var toUid = GetGlobalNodeUid(prefab.Nodes, prefab.Origin, (byte)j, descN);
                             if (toUid == 0) continue;
+
                             var toNode = _mapper.GetNodeByUid(toUid);
                             if (toNode == null || IsZeroNode(toNode)) continue;
+
+                            float[][] waypoints = null;
                             float len = Dist(fromNode, toNode);
+                            if (hasTransform)
+                            {
+                                waypoints = BuildNavCurveWaypoints(
+                                    curvePath.CurveIndices, desc, rotSin, rotCos,
+                                    originPpdX, originPpdZ, originWX, originWZ);
+                                len = waypoints != null && waypoints.Length >= 2
+                                    ? PolylineLength(waypoints)
+                                    : curvePath.Length;
+                            }
                             if (len < 0.001f) continue;
-                            RegisterNode(fromNode);
-                            RegisterNode(toNode);
-                            _graph.Edges.Add(new GraphEdge(
-                                fromUid, toUid,
-                                len * SpeedMult("local_road"), len, "local_road", "prefab"));
+
+                            candidateEdges.Add(new PrefabLaneCandidate
+                            {
+                                ToUid = toUid,
+                                ToNode = toNode,
+                                Length = len,
+                                Waypoints = waypoints,
+                            });
                         }
                     }
+
+                    foreach (var candidate in PickShortestPerTarget(candidateEdges))
+                    {
+                        RegisterNode(fromNode);
+                        RegisterNode(candidate.ToNode);
+                        _graph.Edges.Add(new GraphEdge(
+                            fromUid, candidate.ToUid,
+                            candidate.Length * SpeedMult("local_road"), candidate.Length, "local_road", "prefab",
+                            candidate.Waypoints));
+                    }
                 }
+
+                // If a valid prefab descriptor has no reachable NavCurve branch,
+                // keep it disconnected instead of inventing full-mesh links.
+                // This mirrors truckermudgeon's laneInfo/connections behavior.
             }
         }
 
         private static float[][] BuildNavCurveWaypoints(
             System.Collections.Generic.List<int> curvePath, TsPrefab desc,
             float rotSin, float rotCos,
-            float originPpdX, float originPpdZ, float originWX, float originWZ,
-            float fromNodeX, float fromNodeZ, float toNodeX, float toNodeZ)
+            float originPpdX, float originPpdZ, float originWX, float originWZ)
         {
-            // Collect knot points (world-space start of first curve + end of every curve).
-            // Pin first and last point to the exact road node world positions so prefab
-            // waypoints connect seamlessly to road Hermite splines at junction boundaries.
-            var knots = new System.Collections.Generic.List<float[]>(curvePath.Count + 1);
-            knots.Add(new float[] { fromNodeX, fromNodeZ }); // pinned start
-            for (int i = 0; i < curvePath.Count; i++)
+            var points = new System.Collections.Generic.List<float[]>(curvePath.Count * 8);
+
+            for (int pathIdx = 0; pathIdx < curvePath.Count; pathIdx++)
             {
-                var curve = desc.NavCurves[curvePath[i]];
-                // skip first knot (already added as pinned) and last (will be pinned below)
-                if (i < curvePath.Count - 1)
-                    knots.Add(PpdToWorld(curve.EndX, curve.EndZ, rotSin, rotCos, originPpdX, originPpdZ, originWX, originWZ));
-            }
-            knots.Add(new float[] { toNodeX, toNodeZ }); // pinned end
-
-            // For 2-point straight segments, return as-is
-            if (knots.Count <= 2) return knots.ToArray();
-
-            // Centripetal Catmull-Rom (alpha=0.5) via Barry-Goldman algorithm.
-            // Unlike uniform (alpha=0), the centripetal variant is mathematically
-            // guaranteed to never produce self-intersections or cusps — critical for
-            // unevenly-spaced NavCurve knots at ramp entrances/exits.
-            const int STEPS = 4;
-
-            // Compute cumulative t parameter: t_{i+1} = t_i + sqrt(dist(P_i, P_{i+1}))
-            var tVals = new float[knots.Count];
-            tVals[0] = 0f;
-            for (int k = 1; k < knots.Count; k++)
-            {
-                float dx = knots[k][0] - knots[k-1][0];
-                float dz = knots[k][1] - knots[k-1][1];
-                float dist = (float)Math.Sqrt(dx * dx + dz * dz);
-                tVals[k] = tVals[k - 1] + (float)Math.Sqrt(dist < 0.001f ? 0.001f : dist);
-            }
-
-            var result = new System.Collections.Generic.List<float[]>(knots.Count * STEPS);
-            for (int i = 0; i < knots.Count - 1; i++)
-            {
-                int i0 = i > 0 ? i - 1 : 0;
-                int i3 = i + 2 < knots.Count ? i + 2 : knots.Count - 1;
-                float[] p0 = knots[i0], p1 = knots[i], p2 = knots[i + 1], p3 = knots[i3];
-                float   t0 = tVals[i0], t1 = tVals[i], t2 = tVals[i + 1], t3 = tVals[i3];
-
-                if (i == 0) result.Add(p1);
-                for (int s = 1; s <= STEPS; s++)
+                var curve = desc.NavCurves[curvePath[pathIdx]];
+                var sampled = SampleNavCurve(curve, rotSin, rotCos, originPpdX, originPpdZ, originWX, originWZ);
+                int start = pathIdx == 0 ? 0 : 1;
+                for (int i = start; i < sampled.Length; i++)
                 {
-                    float t = t1 + (t2 - t1) * s / (float)STEPS;
-                    // Non-uniform Catmull-Rom evaluation
-                    float[] a1 = LerpT(p0, p1, t0, t1, t);
-                    float[] a2 = LerpT(p1, p2, t1, t2, t);
-                    float[] a3 = LerpT(p2, p3, t2, t3, t);
-                    float[] b1 = LerpT(a1, a2, t0, t2, t);
-                    float[] b2 = LerpT(a2, a3, t1, t3, t);
-                    result.Add(LerpT(b1, b2, t1, t2, t));
+                    AddPointIfDistinct(points, sampled[i]);
                 }
             }
-            return result.ToArray();
+
+            if (points.Count <= 2) return points.ToArray();
+
+            return DouglasPeucker(points.ToArray(), 0.1f);
+        }
+
+        private class PrefabLaneCandidate
+        {
+            public ulong ToUid;
+            public TsNode ToNode;
+            public float Length;
+            public float[][] Waypoints;
+        }
+
+        private class CurvePath
+        {
+            public int EndNodeIndex;
+            public System.Collections.Generic.List<int> CurveIndices;
+            public float Length;
+        }
+
+        private static System.Collections.Generic.List<CurvePath> GetCurvePaths(
+            TsPrefab desc,
+            System.Collections.Generic.Dictionary<int, int> endingCurveIndexToNodeIndex,
+            int inputLaneIndex)
+        {
+            var seenIndices = new System.Collections.Generic.HashSet<int>();
+
+            CurvePath Prefix(CurvePath path, int curveIndex)
+            {
+                var indices = new System.Collections.Generic.List<int>(path.CurveIndices);
+                indices.Insert(0, curveIndex);
+                return new CurvePath
+                {
+                    EndNodeIndex = path.EndNodeIndex,
+                    CurveIndices = indices,
+                    Length = path.Length,
+                };
+            }
+
+            System.Collections.Generic.List<CurvePath> GetPaths(int curveIndex)
+            {
+                var paths = new System.Collections.Generic.List<CurvePath>();
+                if (seenIndices.Contains(curveIndex)) return paths;
+                seenIndices.Add(curveIndex);
+
+                if (endingCurveIndexToNodeIndex.TryGetValue(curveIndex, out var nodeIndex))
+                {
+                    paths.Add(new CurvePath
+                    {
+                        EndNodeIndex = nodeIndex,
+                        CurveIndices = new System.Collections.Generic.List<int>(),
+                    });
+                    return paths;
+                }
+
+                if (curveIndex < 0 || curveIndex >= desc.NavCurves.Count) return paths;
+                var curve = desc.NavCurves[curveIndex];
+                if (curve.NextLines != null)
+                {
+                    foreach (var nextCurveIndex in curve.NextLines)
+                    {
+                        foreach (var path in GetPaths(nextCurveIndex))
+                        {
+                            paths.Add(Prefix(path, nextCurveIndex));
+                        }
+                    }
+                }
+
+                return paths;
+            }
+
+            var result = GetPaths(inputLaneIndex);
+            for (int i = 0; i < result.Count; i++)
+            {
+                var path = Prefix(result[i], inputLaneIndex);
+                path.Length = CurvePathLength(desc, path.CurveIndices);
+                result[i] = path;
+            }
+            return result;
+        }
+
+        private static float CurvePathLength(TsPrefab desc, System.Collections.Generic.List<int> curveIndices)
+        {
+            var len = 0f;
+            foreach (var curveIndex in curveIndices)
+            {
+                if (curveIndex < 0 || curveIndex >= desc.NavCurves.Count) continue;
+                var curve = desc.NavCurves[curveIndex];
+                len += curve.Length > 0.001f ? curve.Length : LocalCurveChord(curve);
+            }
+            return len;
+        }
+
+        private static System.Collections.Generic.List<PrefabLaneCandidate> PickShortestPerTarget(
+            System.Collections.Generic.List<PrefabLaneCandidate> candidates)
+        {
+            candidates.Sort((a, b) => a.Length.CompareTo(b.Length));
+            var result = new System.Collections.Generic.List<PrefabLaneCandidate>();
+            var seenTargets = new System.Collections.Generic.HashSet<ulong>();
+            foreach (var candidate in candidates)
+            {
+                if (seenTargets.Add(candidate.ToUid))
+                    result.Add(candidate);
+            }
+            return result;
+        }
+
+        private static float LocalCurveChord(TsNavCurve curve)
+        {
+            float dx = curve.EndX - curve.StartX;
+            float dz = curve.EndZ - curve.StartZ;
+            return (float)Math.Sqrt(dx * dx + dz * dz);
+        }
+
+        private static float[][] SampleNavCurve(
+            TsNavCurve curve,
+            float rotSin, float rotCos,
+            float originPpdX, float originPpdZ, float originWX, float originWZ)
+        {
+            float dx = curve.EndX - curve.StartX;
+            float dz = curve.EndZ - curve.StartZ;
+            float dist = (float)Math.Sqrt(dx * dx + dz * dz);
+            if (dist < 0.001f)
+            {
+                return new[]
+                {
+                    PpdToWorld(curve.StartX, curve.StartZ, rotSin, rotCos, originPpdX, originPpdZ, originWX, originWZ),
+                    PpdToWorld(curve.EndX, curve.EndZ, rotSin, rotCos, originPpdX, originPpdZ, originWX, originWZ),
+                };
+            }
+
+            double startRot = PrefabCurveRotation(curve.StartRotW, curve.StartRotY);
+            double endRot   = PrefabCurveRotation(curve.EndRotW,   curve.EndRotY);
+            double delta    = NormalizeRadians(startRot - endRot);
+            double stepEstimate = Math.Floor(Math.Abs(Math.Tan(delta)) * 20.0) + 1.0;
+            if (double.IsNaN(stepEstimate) || double.IsInfinity(stepEstimate)) stepEstimate = 8.0;
+            int steps = (int)Math.Min(8.0, stepEstimate);
+            if (steps < 1) steps = 1;
+
+            float startTanX = (float)Math.Cos(startRot) * dist;
+            float startTanZ = (float)Math.Sin(startRot) * dist;
+            float endTanX   = (float)Math.Cos(endRot) * dist;
+            float endTanZ   = (float)Math.Sin(endRot) * dist;
+
+            var result = new float[steps + 1][];
+            for (int i = 0; i <= steps; i++)
+            {
+                float t = i / (float)steps;
+                float h00 =  2f * t * t * t - 3f * t * t + 1f;
+                float h10 =        t * t * t - 2f * t * t + t;
+                float h01 = -2f * t * t * t + 3f * t * t;
+                float h11 =        t * t * t -       t * t;
+                float x = h00 * curve.StartX + h10 * startTanX + h01 * curve.EndX + h11 * endTanX;
+                float z = h00 * curve.StartZ + h10 * startTanZ + h01 * curve.EndZ + h11 * endTanZ;
+                result[i] = PpdToWorld(x, z, rotSin, rotCos, originPpdX, originPpdZ, originWX, originWZ);
+            }
+            return result;
+        }
+
+        private static double PrefabCurveRotation(float qw, float qy)
+        {
+            return NormalizeRadians(Math.Atan2(-qy, qw) * 2.0 - Math.PI / 2.0);
+        }
+
+        private static double NormalizeRadians(double angle)
+        {
+            while (angle <= -Math.PI) angle += Math.PI * 2.0;
+            while (angle > Math.PI) angle -= Math.PI * 2.0;
+            return angle;
+        }
+
+        private static void AddPointIfDistinct(System.Collections.Generic.List<float[]> points, float[] point)
+        {
+            if (points.Count > 0)
+            {
+                var prev = points[points.Count - 1];
+                float dx = prev[0] - point[0];
+                float dz = prev[1] - point[1];
+                if (dx * dx + dz * dz < 0.0001f) return;
+            }
+            points.Add(point);
+        }
+
+        private static float PolylineLength(float[][] pts)
+        {
+            if (pts == null || pts.Length < 2) return 0f;
+            float len = 0f;
+            for (int i = 1; i < pts.Length; i++)
+            {
+                float dx = pts[i][0] - pts[i - 1][0];
+                float dz = pts[i][1] - pts[i - 1][1];
+                len += (float)Math.Sqrt(dx * dx + dz * dz);
+            }
+            return len;
+        }
+
+        private static float[][] DouglasPeucker(float[][] pts, float epsilon)
+        {
+            if (pts.Length <= 2) return pts;
+            float ax = pts[0][0], az = pts[0][1];
+            float bx = pts[pts.Length - 1][0], bz = pts[pts.Length - 1][1];
+            float abLen = (float)Math.Sqrt((double)(bx - ax) * (bx - ax) + (double)(bz - az) * (bz - az));
+            float maxDist = 0f; int maxIdx = 0;
+            for (int i = 1; i < pts.Length - 1; i++)
+            {
+                float dist;
+                if (abLen < 1e-6f)
+                {
+                    float dx = pts[i][0] - ax, dz = pts[i][1] - az;
+                    dist = (float)Math.Sqrt(dx * dx + dz * dz);
+                }
+                else
+                {
+                    dist = Math.Abs((bz - az) * pts[i][0] - (bx - ax) * pts[i][1] + bx * az - bz * ax) / abLen;
+                }
+                if (dist > maxDist) { maxDist = dist; maxIdx = i; }
+            }
+            if (maxDist <= epsilon) return new[] { pts[0], pts[pts.Length - 1] };
+
+            var left = new float[maxIdx + 1][];
+            Array.Copy(pts, 0, left, 0, maxIdx + 1);
+            var right = new float[pts.Length - maxIdx][];
+            Array.Copy(pts, maxIdx, right, 0, pts.Length - maxIdx);
+            var l = DouglasPeucker(left, epsilon);
+            var r = DouglasPeucker(right, epsilon);
+            var result = new float[l.Length + r.Length - 1][];
+            Array.Copy(l, result, l.Length);
+            Array.Copy(r, 1, result, l.Length, r.Length - 1);
+            return result;
         }
 
         // Replicate GeoJsonExporter.ExportFerries() Bezier sampling so routing waypoints
@@ -423,14 +548,6 @@ namespace TsMap.Routing
             }
 
             return pts.ToArray();
-        }
-
-        private static float[] LerpT(float[] a, float[] b, float ta, float tb, float t)
-        {
-            float dt = tb - ta;
-            if (dt < 1e-10f) return new float[] { a[0], a[1] };
-            float f = (t - ta) / dt;
-            return new float[] { a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f };
         }
 
         private static float[] PpdToWorld(float px, float pz,
