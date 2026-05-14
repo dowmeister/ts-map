@@ -203,7 +203,7 @@ namespace TsMap.Routing
                 {
                     float offset = RoadLaneOffset(road.RoadLook, lane, rightSide: true);
                     var path = OffsetPolyline(center, offset);
-                    AddRoadLane(road, "right", lane, path, forward: true);
+                    AddRoadLane(road, "right", lane, path, forward: true, startNode.Uid, endNode.Uid);
                 }
 
                 for (int lane = 0; lane < leftCount; lane++)
@@ -211,12 +211,19 @@ namespace TsMap.Routing
                     float offset = RoadLaneOffset(road.RoadLook, lane, rightSide: false);
                     var path = OffsetPolyline(center, offset);
                     Array.Reverse(path);
-                    AddRoadLane(road, "left", lane, path, forward: false);
+                    AddRoadLane(road, "left", lane, path, forward: false, endNode.Uid, startNode.Uid);
                 }
             }
         }
 
-        private void AddRoadLane(TsRoadItem road, string side, int laneIndex, float[][] path, bool forward)
+        private void AddRoadLane(
+            TsRoadItem road,
+            string side,
+            int laneIndex,
+            float[][] path,
+            bool forward,
+            ulong pathStartRawNodeUid,
+            ulong pathEndRawNodeUid)
         {
             if (path == null || path.Length < 2) return;
 
@@ -238,8 +245,8 @@ namespace TsMap.Routing
                 Path = path,
             };
             _edges.Add(edge);
-            AddEndpoint(edge, atStart: true);
-            AddEndpoint(edge, atStart: false);
+            AddEndpoint(edge, atStart: true, pathStartRawNodeUid);
+            AddEndpoint(edge, atStart: false, pathEndRawNodeUid);
         }
 
         private void ProcessPrefabs()
@@ -280,6 +287,10 @@ namespace TsMap.Routing
                             var path = BuildNavCurveWaypoints(curvePath.CurveIndices, desc, transform);
                             if (path == null || path.Length < 2) continue;
 
+                            var fromRawUid = GetGlobalNodeUid(prefab.Nodes, prefab.Origin, (byte)fromPpdIdx, descN);
+                            var toRawUid = GetGlobalNodeUid(prefab.Nodes, prefab.Origin, (byte)curvePath.EndNodeIndex, descN);
+                            if (fromRawUid == 0 || toRawUid == 0) continue;
+
                             string lane = "input:" + inputLaneIdx + ":to:" + curvePath.EndNodeIndex;
                             string startId = "prefab:" + prefab.Uid.ToString("X") + ":" + lane + ":start";
                             string endId = "prefab:" + prefab.Uid.ToString("X") + ":" + lane + ":end";
@@ -295,15 +306,15 @@ namespace TsMap.Routing
                                 Path = path,
                             };
                             _edges.Add(edge);
-                            AddEndpoint(edge, atStart: true);
-                            AddEndpoint(edge, atStart: false);
+                            AddEndpoint(edge, atStart: true, fromRawUid);
+                            AddEndpoint(edge, atStart: false, toRawUid);
                         }
                     }
                 }
             }
         }
 
-        private void AddEndpoint(LaneDebugEdge edge, bool atStart)
+        private void AddEndpoint(LaneDebugEdge edge, bool atStart, ulong rawNodeUid)
         {
             if (edge.Path == null || edge.Path.Length < 2) return;
             int idx = atStart ? 0 : edge.Path.Length - 1;
@@ -323,6 +334,7 @@ namespace TsMap.Routing
                 Z = pt[1],
                 DirX = dirX / len,
                 DirZ = dirZ / len,
+                RawNodeUid = rawNodeUid,
             });
         }
 
@@ -330,44 +342,85 @@ namespace TsMap.Routing
         {
             const float MaxSnapDistance = 12f;
             const float MaxAngleDeg = 35f;
-            const float CellSize = MaxSnapDistance;
             float minDot = (float)Math.Cos(MaxAngleDeg * Math.PI / 180.0);
 
-            var prefabGrid = new Dictionary<string, List<LaneEndpoint>>();
+            var roadGroups = new Dictionary<string, List<LaneEndpoint>>();
+            var prefabGroups = new Dictionary<string, List<LaneEndpoint>>();
             foreach (var endpoint in _endpoints)
             {
-                if (endpoint.Edge.Kind != "prefab") continue;
-                string key = GridKey(endpoint.X, endpoint.Z, CellSize);
-                if (!prefabGrid.TryGetValue(key, out var list))
+                if (endpoint.Edge.Kind == "road")
                 {
-                    list = new List<LaneEndpoint>();
-                    prefabGrid[key] = list;
+                    string key = SnapGroupKey(endpoint.RawNodeUid, endpoint.AtStart);
+                    if (!roadGroups.TryGetValue(key, out var list))
+                    {
+                        list = new List<LaneEndpoint>();
+                        roadGroups[key] = list;
+                    }
+                    list.Add(endpoint);
                 }
-                list.Add(endpoint);
+                else if (endpoint.Edge.Kind == "prefab")
+                {
+                    // Road start must meet prefab end; road end must meet prefab start.
+                    string key = SnapGroupKey(endpoint.RawNodeUid, !endpoint.AtStart);
+                    if (!prefabGroups.TryGetValue(key, out var list))
+                    {
+                        list = new List<LaneEndpoint>();
+                        prefabGroups[key] = list;
+                    }
+                    list.Add(endpoint);
+                }
             }
 
-            var usedPrefabEndpoints = new HashSet<LaneEndpoint>();
             int snapped = 0;
-            foreach (var roadEndpoint in _endpoints)
+            foreach (var kv in roadGroups)
             {
-                if (roadEndpoint.Edge.Kind != "road") continue;
+                if (!prefabGroups.TryGetValue(kv.Key, out var prefabEndpoints)) continue;
+                snapped += SnapEndpointGroup(kv.Value, prefabEndpoints, MaxSnapDistance, minDot);
+            }
 
-                LaneEndpoint best = null;
+            Logger.Instance.Info($"[LaneGraphDebug] Matched {snapped} road lane endpoints to prefab endpoints");
+        }
+
+        private int SnapEndpointGroup(
+            List<LaneEndpoint> roadEndpoints,
+            List<LaneEndpoint> prefabEndpoints,
+            float maxSnapDistance,
+            float minDot)
+        {
+            if (roadEndpoints.Count == 0 || prefabEndpoints.Count == 0) return 0;
+
+            float avgX = 0f, avgZ = 0f;
+            foreach (var endpoint in roadEndpoints)
+            {
+                avgX += endpoint.DirX;
+                avgZ += endpoint.DirZ;
+            }
+            float avgLen = (float)Math.Sqrt(avgX * avgX + avgZ * avgZ);
+            if (avgLen < 0.001f) return 0;
+            avgX /= avgLen;
+            avgZ /= avgLen;
+
+            float lateralX = -avgZ;
+            float lateralZ = avgX;
+            roadEndpoints.Sort((a, b) => Lateral(a, lateralX, lateralZ).CompareTo(Lateral(b, lateralX, lateralZ)));
+            prefabEndpoints.Sort((a, b) => Lateral(a, lateralX, lateralZ).CompareTo(Lateral(b, lateralX, lateralZ)));
+
+            int prefabStart = 0;
+            int snapped = 0;
+            foreach (var roadEndpoint in roadEndpoints)
+            {
+                int bestIndex = -1;
                 float bestScore = float.MaxValue;
                 float bestDist = 0f;
                 float bestDot = 0f;
-                foreach (var prefabEndpoint in NearbyPrefabEndpoints(prefabGrid, roadEndpoint.X, roadEndpoint.Z, CellSize))
+                for (int i = prefabStart; i < prefabEndpoints.Count; i++)
                 {
-                    if (usedPrefabEndpoints.Contains(prefabEndpoint)) continue;
-                    // Valid continuity is always incoming -> outgoing:
-                    // road end -> prefab start, or prefab end -> road start.
-                    // Matching two starts or two ends creates the old "inverted direction" bug.
-                    if (roadEndpoint.AtStart == prefabEndpoint.AtStart) continue;
+                    var prefabEndpoint = prefabEndpoints[i];
 
                     float dx = prefabEndpoint.X - roadEndpoint.X;
                     float dz = prefabEndpoint.Z - roadEndpoint.Z;
                     float dist = (float)Math.Sqrt(dx * dx + dz * dz);
-                    if (dist > MaxSnapDistance) continue;
+                    if (dist > maxSnapDistance) continue;
 
                     float dot = roadEndpoint.DirX * prefabEndpoint.DirX + roadEndpoint.DirZ * prefabEndpoint.DirZ;
                     if (dot < minDot) continue;
@@ -375,15 +428,17 @@ namespace TsMap.Routing
                     float score = dist + (1f - dot) * 8f;
                     if (score < bestScore)
                     {
-                        best = prefabEndpoint;
+                        bestIndex = i;
                         bestScore = score;
                         bestDist = dist;
                         bestDot = dot;
                     }
                 }
 
-                if (best == null) continue;
-                usedPrefabEndpoints.Add(best);
+                if (bestIndex < 0) continue;
+                var best = prefabEndpoints[bestIndex];
+                prefabStart = bestIndex + 1;
+
                 ApplyEndpointSnap(roadEndpoint, best.X, best.Z);
                 if (_nodes.TryGetValue(roadEndpoint.Id, out var node))
                 {
@@ -403,7 +458,17 @@ namespace TsMap.Routing
                 snapped++;
             }
 
-            Logger.Instance.Info($"[LaneGraphDebug] Matched {snapped} road lane endpoints to prefab endpoints");
+            return snapped;
+        }
+
+        private static float Lateral(LaneEndpoint endpoint, float lateralX, float lateralZ)
+        {
+            return endpoint.X * lateralX + endpoint.Z * lateralZ;
+        }
+
+        private static string SnapGroupKey(ulong rawNodeUid, bool roadAtStart)
+        {
+            return rawNodeUid.ToString("X") + ":" + (roadAtStart ? "roadStart" : "roadEnd");
         }
 
         private static void ApplyEndpointSnap(LaneEndpoint endpoint, float targetX, float targetZ)
@@ -449,6 +514,16 @@ namespace TsMap.Routing
             int cx = (int)Math.Floor(x / cellSize);
             int cz = (int)Math.Floor(z / cellSize);
             return cx + ":" + cz;
+        }
+
+        private static ulong GetGlobalNodeUid(
+            List<ulong> nodes,
+            int origin,
+            byte descriptorNodeIndex,
+            int descriptorNodeCount)
+        {
+            int idx = (descriptorNodeIndex - origin + descriptorNodeCount) % descriptorNodeCount;
+            return idx < nodes.Count ? nodes[idx] : 0UL;
         }
 
         private void AddNode(string id, float x, float z, string kind, ulong sourceUid, string lane)
@@ -760,6 +835,7 @@ namespace TsMap.Routing
             public float Z;
             public float DirX;
             public float DirZ;
+            public ulong RawNodeUid;
         }
 
         private class CurvePath
