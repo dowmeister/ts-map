@@ -10,6 +10,8 @@
 
 GAME=${1:-ets2}
 MODE=${2:-all}
+MAIN_MAXZOOM=${MAIN_MAXZOOM:-10}
+FOOTPRINTS_MAXZOOM=${FOOTPRINTS_MAXZOOM:-6}
 
 if [[ "$MODE" != "all" && "$MODE" != "pmtiles" ]]; then
     echo "ERROR: Invalid mode '$MODE'. Use 'all' or 'pmtiles'."
@@ -20,6 +22,7 @@ fi
 echo "======================================="
 echo "Generating Vector Tiles with Tippecanoe (Docker)"
 echo "Game: $GAME | Mode: $MODE"
+echo "Main maxzoom: z$MAIN_MAXZOOM | Footprints maxzoom: z$FOOTPRINTS_MAXZOOM"
 echo "======================================="
 
 if [[ "$MODE" == "all" ]]; then
@@ -44,7 +47,7 @@ if [[ "$MODE" == "all" ]]; then
         tsmap-tippecanoe \
         bash -c "tippecanoe \
         -o \"/data/mbtiles/tiles.mbtiles\" \
-        -z8 -Z3 \
+        -z${MAIN_MAXZOOM} -Z3 \
         --drop-densest-as-needed \
         --force \
         -L roads:/data/geojson/roads.geojson \
@@ -83,7 +86,7 @@ if [[ "$MODE" == "all" ]]; then
             tsmap-tippecanoe \
             bash -c "tippecanoe \
             -o \"/data/mbtiles/tiles-footprints.mbtiles\" \
-            -z8 -Z6 \
+            -z${FOOTPRINTS_MAXZOOM} -Z6 \
             --drop-densest-as-needed \
             --force \
             -L footprints:/data/geojson/footprints.geojson \

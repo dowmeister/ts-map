@@ -167,10 +167,17 @@ chmod +x docker-tippecanoe.sh  # First time only
 
 The script uses these settings:
 
-- `-z8` - Maximum zoom level 8
-- `-Z0` - Minimum zoom level 0
+- `-z10` - Maximum zoom level 10 for the main PMTiles by default
+- `-Z3` - Minimum zoom level 3 for the main PMTiles
+- `-z10` / `-Z6` - Maximum/minimum zoom levels for footprints by default
 - `--drop-densest-as-needed` - Simplify dense areas to keep tile sizes manageable
 - `--force` - Overwrite existing output
+
+You can override the default PMTiles max zoom without editing the script:
+
+```bash
+MAIN_MAXZOOM=11 FOOTPRINTS_MAXZOOM=10 ./docker-tippecanoe.sh ets2
+```
 
 ### Manual Docker Command
 
@@ -340,9 +347,21 @@ See [TsMap/GeoJsonExporter.cs](TsMap/GeoJsonExporter.cs#L38) to adjust `maxExten
 - **Zoom 0-3**: Overview of entire map
 - **Zoom 4-5**: Regional view, map fits screen
 - **Zoom 6-7**: State/province level
-- **Zoom 8**: City detail level
+- **Zoom 8-10**: City and close road detail
 
-Adjust in `docker-tippecanoe` scripts by changing `-z8 -Z0`.
+Adjust with `MAIN_MAXZOOM` and `FOOTPRINTS_MAXZOOM` when running `docker-tippecanoe.sh`.
+
+### PMTiles on Cloudflare R2
+
+For production, serve `map_data/pmtiles/*.pmtiles` through a Cloudflare-cached custom domain rather than a raw R2 public URL. PMTiles depends on HTTP Range requests; edge caching and long-lived immutable object headers make panning and zooming much smoother after the first requests.
+
+The upload script sets:
+
+- `Cache-Control: public, max-age=3600, must-revalidate` for PMTiles, so the same URL gets useful caching but can pick up newly uploaded tile files without rebuilding the app after the one-hour TTL expires
+- `Cache-Control: public, max-age=31536000, immutable` for sprites, which are versioned by `VITE_MAP_ASSET_VERSION`
+- `Content-Type: application/vnd.pmtiles` for PMTiles
+
+When regenerating sprites, bump `VITE_MAP_ASSET_VERSION` before rebuilding the React app so clients fetch the new sprite JSON/PNG files.
 
 ### Tile Server Port
 

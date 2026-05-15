@@ -161,7 +161,8 @@ sync_pmtiles() {
         --progress \
         --transfers 4 \
         --s3-upload-concurrency 4 \
-        --header-upload "Cache-Control: public, max-age=300" \
+        --header-upload "Cache-Control: public, max-age=3600, must-revalidate" \
+        --header-upload "Content-Type: application/vnd.pmtiles" \
         --header-upload "x-amz-meta-uploaded: $(date +%s)" \
         --include "${game}*.pmtiles" \
         "$SCRIPT_DIR/map_data/pmtiles/" \
@@ -197,7 +198,7 @@ sync_sprites() {
         --transfers 4 \
         --checkers 8 \
         --s3-upload-concurrency 2 \
-        --header-upload "Cache-Control: public, max-age=300" \
+        --header-upload "Cache-Control: public, max-age=31536000, immutable" \
         --header-upload "x-amz-meta-uploaded: $(date +%s)" \
         "$sprites_dir" \
         "$REMOTE_NAME:$BUCKET_NAME/map_data/$game/sprites"

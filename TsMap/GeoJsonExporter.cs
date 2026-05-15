@@ -121,8 +121,8 @@ namespace TsMap
         }
 
         /// <summary>
-        /// Export roads as GeoJSON Polygons with actual width (not LineStrings)
-        /// Creates filled polygons similar to prefab roads for seamless connections
+        /// Export roads as GeoJSON. Normal roads are polygons with actual width;
+        /// secret roads are centerlines so the web map can draw them dashed.
         /// </summary>
         public void ExportRoads(string filePath)
         {
@@ -178,6 +178,35 @@ namespace TsMap
                 }
 
                 if (curvePoints.Count < 2) continue;
+
+                if (road.IsSecret)
+                {
+                    var lineCoords = new JArray();
+                    foreach (var point in curvePoints)
+                    {
+                        var (lon, lat) = GameToLatLng(point.x, point.z);
+                        lineCoords.Add(new JArray { lon, lat, point.y });
+                    }
+
+                    features.Add(new JObject
+                    {
+                        ["type"] = "Feature",
+                        ["geometry"] = new JObject
+                        {
+                            ["type"] = "LineString",
+                            ["coordinates"] = lineCoords
+                        },
+                        ["properties"] = new JObject
+                        {
+                            ["road_type"]  = road.RoadLook?.Token.ToString() ?? "unknown",
+                            ["road_class"] = GetRoadClass(road.RoadLook),
+                            ["width"]      = roadWidth,
+                            ["is_secret"]  = true,
+                            ["dlc_guard"]  = road.DlcGuard
+                        }
+                    });
+                    continue;
+                }
 
                 // Create polygon by offsetting curve perpendicular on both sides
                 var leftSide = new List<(double lon, double lat, double ele)>();
@@ -250,6 +279,7 @@ namespace TsMap
                         ["road_type"]  = road.RoadLook?.Token.ToString() ?? "unknown",
                         ["road_class"] = GetRoadClass(road.RoadLook),
                         ["width"]      = roadWidth,
+                        ["is_secret"]  = false,
                         ["dlc_guard"]  = road.DlcGuard
                     }
                 });
@@ -465,16 +495,49 @@ namespace TsMap
                         var eleStart = (double)(origin.Y - mapPointOrigin.Y + mapPoint.Y);
                         var eleEnd = (double)(origin.Y - mapPointOrigin.Y + neighbourPoint.Y);
 
+                        var averageLaneCount = (mapPointLaneCount + neighbourLaneCount) / 2;
+                        var segmentRoadClass = prefabHighway
+                            ? "highway"
+                            : (averageLaneCount <= 2 ? "local" : "normal");
+
+                        if (prefabItem.IsSecret)
+                        {
+                            var center1 = TransformPrefabPoint(mapPoint.X, mapPoint.Z, prefabStartX, prefabStartZ, rot, origin);
+                            var center2 = TransformPrefabPoint(neighbourPoint.X, neighbourPoint.Z, prefabStartX, prefabStartZ, rot, origin);
+                            var (centerLon1, centerLat1) = GameToLatLng(center1.X, center1.Z);
+                            var (centerLon2, centerLat2) = GameToLatLng(center2.X, center2.Z);
+
+                            roadFeatures.Add(new JObject
+                            {
+                                ["type"] = "Feature",
+                                ["geometry"] = new JObject
+                                {
+                                    ["type"] = "LineString",
+                                    ["coordinates"] = new JArray
+                                    {
+                                        new JArray { centerLon1, centerLat1, eleStart },
+                                        new JArray { centerLon2, centerLat2, eleEnd }
+                                    }
+                                },
+                                ["properties"] = new JObject
+                                {
+                                    ["road_type"]    = "prefab",
+                                    ["road_class"]   = segmentRoadClass,
+                                    ["prefab_token"] = ScsToken.TokenToString(prefab.Token),
+                                    ["lane_count"]   = averageLaneCount,
+                                    ["width"]        = Consts.LaneWidth * Math.Max(averageLaneCount, 1),
+                                    ["is_secret"]    = true,
+                                    ["dlc_guard"]    = prefabItem.DlcGuard
+                                }
+                            });
+                            continue;
+                        }
+
                         coordinates.Add(new JArray { lon1, lat1, eleStart });
                         coordinates.Add(new JArray { lon2, lat2, eleEnd });
                         coordinates.Add(new JArray { lon3, lat3, eleEnd });
                         coordinates.Add(new JArray { lon4, lat4, eleStart });
                         coordinates.Add(new JArray { lon1, lat1, eleStart });
-
-                        var averageLaneCount = (mapPointLaneCount + neighbourLaneCount) / 2;
-                        var segmentRoadClass = prefabHighway
-                            ? "highway"
-                            : (averageLaneCount <= 2 ? "local" : "normal");
 
                         roadFeatures.Add(new JObject
                         {
@@ -490,6 +553,8 @@ namespace TsMap
                                 ["road_class"]   = segmentRoadClass,
                                 ["prefab_token"] = ScsToken.TokenToString(prefab.Token),
                                 ["lane_count"]   = averageLaneCount,
+                                ["width"]        = Consts.LaneWidth * Math.Max(averageLaneCount, 1),
+                                ["is_secret"]    = false,
                                 ["dlc_guard"]    = prefabItem.DlcGuard
                             }
                         });

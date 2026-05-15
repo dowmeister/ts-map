@@ -93,6 +93,26 @@ function _overlayLayers() {
   ];
 }
 
+const _ROAD_COLOR = [
+  "match",
+  ["get", "road_class"],
+  "highway",
+  "#D4A017",
+  /* normal/local */ "#8A9BAD",
+];
+
+const _SECRET_ROAD_WIDTH = [
+  "interpolate",
+  ["linear"],
+  ["zoom"],
+  6,
+  ["case", ["==", ["get", "road_class"], "highway"], 1.2, 0.8],
+  10,
+  ["case", ["==", ["get", "road_class"], "highway"], 2.8, 1.8],
+  14,
+  ["case", ["==", ["get", "road_class"], "highway"], 5.5, 3.5],
+];
+
 export const OVERLAY_LAYER_GROUPS = [
   //{ id: "map-background", label: "Map Background", layers: ["game-background"] },
   { id: "overlays-companies", label: "Companies" },
@@ -133,6 +153,7 @@ function buildBackground(baseUrl, game, mapInfo) {
         id: "game-background",
         type: "raster",
         source: "game-background",
+        minzoom: 3,
         paint: { "raster-opacity": 0.85 },
       },
     ],
@@ -144,8 +165,9 @@ export function createMapStyle(game, mapInfo = null) {
   const baseUrl = rawBase.startsWith("http")
     ? rawBase
     : `${window.location.origin}${rawBase}`;
-  const spriteVersion = Date.now().toString();
-  //const 4= buildBackground(baseUrl, game, mapInfo);
+  const assetVersion = import.meta.env.VITE_MAP_ASSET_VERSION;
+  const spriteQuery = assetVersion ? `?v=${encodeURIComponent(assetVersion)}` : "";
+  const background = buildBackground(baseUrl, game, mapInfo);
 
   console.log('Using map style with base URL:', baseUrl);
   return {
@@ -154,19 +176,19 @@ export function createMapStyle(game, mapInfo = null) {
     sprite: [
       {
         id: "company",
-        url: `${baseUrl}/${game}/sprites/sprite-company?v=${spriteVersion}`,
+        url: `${baseUrl}/${game}/sprites/sprite-company${spriteQuery}`,
       },
       {
         id: "service",
-        url: `${baseUrl}/${game}/sprites/sprite-service?v=${spriteVersion}`,
+        url: `${baseUrl}/${game}/sprites/sprite-service${spriteQuery}`,
       },
       {
         id: "road",
-        url: `${baseUrl}/${game}/sprites/sprite-road?v=${spriteVersion}`,
+        url: `${baseUrl}/${game}/sprites/sprite-road${spriteQuery}`,
       },
       {
         id: "misc",
-        url: `${baseUrl}/${game}/sprites/sprite-misc?v=${spriteVersion}`,
+        url: `${baseUrl}/${game}/sprites/sprite-misc${spriteQuery}`,
       },
     ],
     sources: {
@@ -178,7 +200,6 @@ export function createMapStyle(game, mapInfo = null) {
         type: "vector",
         url: `pmtiles://${baseUrl}/pmtiles/${game}-footprints.pmtiles`,
       },
-      //...background.sources,
       trucks: {
         type: "geojson",
         data: {
@@ -207,7 +228,6 @@ export function createMapStyle(game, mapInfo = null) {
           "background-color": "#1A2733",
         },
       },
-      //...background.layers,
       {
         id: "footprints",
         type: "fill-extrusion",
@@ -300,16 +320,28 @@ export function createMapStyle(game, mapInfo = null) {
         type: "fill",
         source: "map",
         "source-layer": "roads",
+        filter: ["!=", ["get", "is_secret"], true],
         paint: {
-          "fill-color": [
-            "match",
-            ["get", "road_class"],
-            "highway",
-            "#D4A017",
-            /* normal/local */ "#8A9BAD",
-          ],
+          "fill-color": _ROAD_COLOR,
           "fill-opacity": 1.0,
           "fill-antialias": true,
+        },
+      },
+      {
+        id: "roads-secret",
+        type: "line",
+        source: "map",
+        "source-layer": "roads",
+        filter: ["==", ["get", "is_secret"], true],
+        layout: {
+          "line-cap": "round",
+          "line-join": "round",
+        },
+        paint: {
+          "line-color": _ROAD_COLOR,
+          "line-width": _SECRET_ROAD_WIDTH,
+          "line-opacity": 1.0,
+          "line-dasharray": [1.2, 2.4],
         },
       },
       {
@@ -317,16 +349,28 @@ export function createMapStyle(game, mapInfo = null) {
         type: "fill",
         source: "map",
         "source-layer": "prefab_roads",
+        filter: ["!=", ["get", "is_secret"], true],
         paint: {
-          "fill-color": [
-            "match",
-            ["get", "road_class"],
-            "highway",
-            "#D4A017",
-            /* normal/local */ "#8A9BAD",
-          ],
+          "fill-color": _ROAD_COLOR,
           "fill-opacity": 1.0,
           "fill-antialias": true,
+        },
+      },
+      {
+        id: "prefab-roads-secret",
+        type: "line",
+        source: "map",
+        "source-layer": "prefab_roads",
+        filter: ["==", ["get", "is_secret"], true],
+        layout: {
+          "line-cap": "round",
+          "line-join": "round",
+        },
+        paint: {
+          "line-color": _ROAD_COLOR,
+          "line-width": _SECRET_ROAD_WIDTH,
+          "line-opacity": 1.0,
+          "line-dasharray": [1.2, 2.4],
         },
       },
       {
