@@ -33,6 +33,8 @@ namespace TsMap.Routing
             ProcessRoads();
             ProcessPrefabs();
             SnapRoadEndpointsToPrefabs();
+            SnapPrefabEndpointsToPrefabs();
+            ComputeNodeDegrees();
 
             Logger.Instance.Info($"[LaneGraphDebug] Writing {filePath} ...");
             using (var fs = new FileStream(filePath, FileMode.Create, FileAccess.Write))
@@ -63,6 +65,8 @@ namespace TsMap.Routing
                     jw.WritePropertyName("rawNodeUid"); jw.WriteValue(node.RawNodeUid);
                     jw.WritePropertyName("snapStatus"); jw.WriteValue(node.SnapStatus);
                     jw.WritePropertyName("snapDetail"); jw.WriteValue(node.SnapDetail);
+                    jw.WritePropertyName("inDegree"); jw.WriteValue(node.InDegree);
+                    jw.WritePropertyName("outDegree"); jw.WriteValue(node.OutDegree);
                     jw.WriteEndObject();
                 }
                 jw.WriteEndArray();
@@ -106,6 +110,8 @@ namespace TsMap.Routing
                 ProcessRoads();
                 ProcessPrefabs();
                 SnapRoadEndpointsToPrefabs();
+                SnapPrefabEndpointsToPrefabs();
+                ComputeNodeDegrees();
             }
 
             var projection = MapProjection.ReadClimateProjectionSii();
@@ -157,7 +163,7 @@ namespace TsMap.Routing
                     jw.WriteValue(ll.lat);
                     jw.WriteEndArray();
                     jw.WriteEndObject();
-                    WriteProperties(jw, "node", node.Kind, node.SourceUid, node.Lane, node.Id, null, node.RawNodeUid, node.SnapStatus, node.SnapDetail);
+                    WriteProperties(jw, "node", node.Kind, node.SourceUid, node.Lane, node.Id, null, node.RawNodeUid, node.SnapStatus, node.SnapDetail, node.InDegree, node.OutDegree);
                     jw.WriteEndObject();
                 }
 
@@ -176,7 +182,9 @@ namespace TsMap.Routing
             string to,
             string rawNodeUid = null,
             string snapStatus = null,
-            string snapDetail = null)
+            string snapDetail = null,
+            int inDegree = 0,
+            int outDegree = 0)
         {
             jw.WritePropertyName("properties");
             jw.WriteStartObject();
@@ -190,6 +198,8 @@ namespace TsMap.Routing
                 jw.WritePropertyName("rawNodeUid"); jw.WriteValue(rawNodeUid);
                 jw.WritePropertyName("snapStatus"); jw.WriteValue(snapStatus);
                 jw.WritePropertyName("snapDetail"); jw.WriteValue(snapDetail);
+                jw.WritePropertyName("inDegree"); jw.WriteValue(inDegree);
+                jw.WritePropertyName("outDegree"); jw.WriteValue(outDegree);
             }
             else
             {
@@ -360,7 +370,7 @@ namespace TsMap.Routing
         private void SnapRoadEndpointsToPrefabs()
         {
             const float MaxSnapDistance = 12f;
-            const float MaxAngleDeg = 35f;
+            const float MaxAngleDeg = 110f;
             float minDot = (float)Math.Cos(MaxAngleDeg * Math.PI / 180.0);
 
             var roadGroups = new Dictionary<string, List<LaneEndpoint>>();
@@ -410,6 +420,96 @@ namespace TsMap.Routing
             Logger.Instance.Info($"[LaneGraphDebug] Unmatched endpoints: road={unmatched.Road}, prefab={unmatched.Prefab}, count-mismatch groups={groupsWithMismatch}");
         }
 
+        private void SnapPrefabEndpointsToPrefabs()
+        {
+            const float MaxSnapDistance = 12f;
+            const float MaxAngleDeg = 110f;
+            float minDot = (float)Math.Cos(MaxAngleDeg * Math.PI / 180.0);
+
+            var startsByRawNode = new Dictionary<ulong, List<LaneEndpoint>>();
+            var endsByRawNode = new Dictionary<ulong, List<LaneEndpoint>>();
+            foreach (var endpoint in _endpoints)
+            {
+                if (endpoint.Edge.Kind != "prefab") continue;
+                var groups = endpoint.AtStart ? startsByRawNode : endsByRawNode;
+                if (!groups.TryGetValue(endpoint.RawNodeUid, out var list))
+                {
+                    list = new List<LaneEndpoint>();
+                    groups[endpoint.RawNodeUid] = list;
+                }
+                list.Add(endpoint);
+            }
+
+            int snapped = 0;
+            foreach (var kv in endsByRawNode)
+            {
+                if (!startsByRawNode.TryGetValue(kv.Key, out var starts)) continue;
+                snapped += SnapPrefabEndpointGroup(kv.Value, starts, MaxSnapDistance, minDot);
+            }
+
+            Logger.Instance.Info($"[LaneGraphDebug] Matched {snapped} prefab endpoints to adjacent prefab endpoints");
+        }
+
+        private int SnapPrefabEndpointGroup(
+            List<LaneEndpoint> endEndpoints,
+            List<LaneEndpoint> startEndpoints,
+            float maxSnapDistance,
+            float minDot)
+        {
+            endEndpoints = UniqueEndpointsById(endEndpoints);
+            startEndpoints = UniqueEndpointsById(startEndpoints);
+            endEndpoints.RemoveAll(e => startEndpoints.Exists(s => s.Id == e.Id));
+            if (endEndpoints.Count == 0 || startEndpoints.Count == 0) return 0;
+
+            float avgX = 0f, avgZ = 0f;
+            foreach (var endpoint in endEndpoints)
+            {
+                avgX += endpoint.DirX;
+                avgZ += endpoint.DirZ;
+            }
+            float avgLen = (float)Math.Sqrt(avgX * avgX + avgZ * avgZ);
+            if (avgLen < 0.001f) return 0;
+            avgX /= avgLen;
+            avgZ /= avgLen;
+
+            float lateralX = -avgZ;
+            float lateralZ = avgX;
+            endEndpoints.Sort((a, b) => Lateral(a, lateralX, lateralZ).CompareTo(Lateral(b, lateralX, lateralZ)));
+            startEndpoints.Sort((a, b) => Lateral(a, lateralX, lateralZ).CompareTo(Lateral(b, lateralX, lateralZ)));
+
+            var matches = FindBestOrderedMatches(endEndpoints, startEndpoints, maxSnapDistance, minDot);
+            int snapped = 0;
+            foreach (var match in matches)
+            {
+                if (match.Road.Edge.SourceUid == match.Prefab.Edge.SourceUid) continue;
+
+                _matchedEndpointIds.Add(match.Road.Id);
+                _matchedEndpointIds.Add(match.Prefab.Id);
+                if (_nodes.TryGetValue(match.Road.Id, out var fromNode))
+                {
+                    fromNode.SnapStatus = match.Distance < 2f ? "matched" : "adjusted";
+                    fromNode.SnapDetail = "prefab to prefab";
+                }
+                if (_nodes.TryGetValue(match.Prefab.Id, out var toNode))
+                {
+                    toNode.SnapStatus = match.Distance < 2f ? "matched" : "adjusted";
+                    toNode.SnapDetail = "prefab to prefab";
+                }
+
+                _edges.Add(new LaneDebugEdge
+                {
+                    From = match.Road.Id,
+                    To = match.Prefab.Id,
+                    Kind = match.Distance < 2f ? "prefab_link_good" : "prefab_link_adjusted",
+                    SourceUid = match.Road.Edge.SourceUid,
+                    Lane = match.Road.Edge.Lane + " -> " + match.Prefab.Edge.Lane + $" ({match.Distance:0.0}m, dot {match.Dot:0.00})",
+                    Path = new[] { new[] { match.Road.X, match.Road.Z }, new[] { match.Prefab.X, match.Prefab.Z } },
+                });
+                snapped++;
+            }
+            return snapped;
+        }
+
         private int SnapEndpointGroup(
             List<LaneEndpoint> roadEndpoints,
             List<LaneEndpoint> prefabEndpoints,
@@ -434,7 +534,7 @@ namespace TsMap.Routing
             roadEndpoints.Sort((a, b) => Lateral(a, lateralX, lateralZ).CompareTo(Lateral(b, lateralX, lateralZ)));
             prefabEndpoints.Sort((a, b) => Lateral(a, lateralX, lateralZ).CompareTo(Lateral(b, lateralX, lateralZ)));
             roadEndpoints = UniqueEndpointsById(roadEndpoints);
-            prefabEndpoints = UniqueEndpointsById(prefabEndpoints);
+            prefabEndpoints = BestEndpointPerIdForReferences(prefabEndpoints, roadEndpoints, maxSnapDistance, minDot);
 
             int snapped = 0;
             var matches = FindBestOrderedMatches(roadEndpoints, prefabEndpoints, maxSnapDistance, minDot);
@@ -630,6 +730,65 @@ namespace TsMap.Routing
             return result;
         }
 
+        private static List<LaneEndpoint> BestEndpointPerIdForReferences(
+            List<LaneEndpoint> endpoints,
+            List<LaneEndpoint> references,
+            float maxSnapDistance,
+            float minDot)
+        {
+            var bestById = new Dictionary<string, LaneEndpointChoice>();
+            foreach (var endpoint in endpoints)
+            {
+                var choice = ScoreEndpointAgainstReferences(endpoint, references, maxSnapDistance, minDot);
+                if (!bestById.TryGetValue(endpoint.Id, out var current) ||
+                    choice.ValidRank < current.ValidRank ||
+                    (choice.ValidRank == current.ValidRank && choice.Score < current.Score))
+                {
+                    bestById[endpoint.Id] = choice;
+                }
+            }
+
+            var result = new List<LaneEndpoint>(bestById.Count);
+            var seen = new HashSet<string>();
+            foreach (var endpoint in endpoints)
+            {
+                if (!seen.Add(endpoint.Id)) continue;
+                result.Add(bestById[endpoint.Id].Endpoint);
+            }
+            return result;
+        }
+
+        private static LaneEndpointChoice ScoreEndpointAgainstReferences(
+            LaneEndpoint endpoint,
+            List<LaneEndpoint> references,
+            float maxSnapDistance,
+            float minDot)
+        {
+            int bestRank = 1;
+            float bestScore = float.MaxValue;
+            foreach (var reference in references)
+            {
+                float dx = endpoint.X - reference.X;
+                float dz = endpoint.Z - reference.Z;
+                float dist = (float)Math.Sqrt(dx * dx + dz * dz);
+                float dot = endpoint.DirX * reference.DirX + endpoint.DirZ * reference.DirZ;
+                int rank = dist <= maxSnapDistance && dot >= minDot ? 0 : 1;
+                float score = dist + (1f - dot) * 8f;
+                if (rank < bestRank || (rank == bestRank && score < bestScore))
+                {
+                    bestRank = rank;
+                    bestScore = score;
+                }
+            }
+
+            return new LaneEndpointChoice
+            {
+                Endpoint = endpoint,
+                ValidRank = bestRank,
+                Score = bestScore,
+            };
+        }
+
         private static int CountUniqueEndpointIds(List<LaneEndpoint> endpoints)
         {
             var seen = new HashSet<string>();
@@ -690,7 +849,7 @@ namespace TsMap.Routing
             LaneEndpoint nearest = null;
             float nearestDist = float.MaxValue;
             float nearestDot = -1f;
-            foreach (var candidate in UniqueEndpointsById(oppositeEndpoints))
+            foreach (var candidate in oppositeEndpoints)
             {
                 float dx = candidate.X - endpoint.X;
                 float dz = candidate.Z - endpoint.Z;
@@ -719,6 +878,32 @@ namespace TsMap.Routing
                 ":port:" + rawNodeUid.ToString("X") +
                 ":" + QuantizePortCoord(x) +
                 ":" + QuantizePortCoord(z);
+        }
+
+        private void ComputeNodeDegrees()
+        {
+            foreach (var node in _nodes.Values)
+            {
+                node.InDegree = 0;
+                node.OutDegree = 0;
+            }
+
+            foreach (var edge in _edges)
+            {
+                if (edge.Kind == "snap_good" || edge.Kind == "snap_adjusted") continue;
+                if (_nodes.TryGetValue(edge.From, out var from)) from.OutDegree++;
+                if (_nodes.TryGetValue(edge.To, out var to)) to.InDegree++;
+            }
+
+            foreach (var node in _nodes.Values)
+            {
+                if (node.Kind != "prefab" || node.SnapStatus != "pending") continue;
+                if (node.InDegree == 0 || node.OutDegree == 0)
+                {
+                    node.Kind = "prefab_terminal";
+                    node.SnapDetail = "prefab leaf without road snap";
+                }
+            }
         }
 
         private static int QuantizePortCoord(float value)
@@ -1064,6 +1249,8 @@ namespace TsMap.Routing
             public string RawNodeUid;
             public string SnapStatus;
             public string SnapDetail;
+            public int InDegree;
+            public int OutDegree;
         }
 
         private class LaneDebugEdge
@@ -1095,6 +1282,13 @@ namespace TsMap.Routing
             public float Distance;
             public float Dot;
             public float Cost;
+        }
+
+        private class LaneEndpointChoice
+        {
+            public LaneEndpoint Endpoint;
+            public int ValidRank;
+            public float Score;
         }
 
         private class MatchState

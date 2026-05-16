@@ -166,6 +166,7 @@ export function useDebugOverlay(mapInstance, tileMapInfo, enabled) {
         snap: <code>${p.snapStatus || ''}</code><br/>
         detail: <code>${p.snapDetail || ''}</code><br/>
         raw node: <code>${p.rawNodeUid || ''}</code><br/>
+        degree: <code>${p.inDegree ?? ''} in / ${p.outDegree ?? ''} out</code><br/>
         x: ${Number(p.x).toFixed(1)}<br/>
         z: ${Number(p.z).toFixed(1)}`)
       .addTo(mapInstance)

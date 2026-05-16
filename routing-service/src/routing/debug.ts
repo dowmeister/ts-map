@@ -25,6 +25,8 @@ type LaneGraphDebugNode = {
   rawNodeUid?: string;
   snapStatus?: string;
   snapDetail?: string;
+  inDegree?: number;
+  outDegree?: number;
 };
 type LaneGraphDebugEdge = {
   from: string;
@@ -323,6 +325,8 @@ export function laneGraphDebugHandler(req: Request, res: Response): void {
         rawNodeUid: node.rawNodeUid,
         snapStatus: node.snapStatus,
         snapDetail: node.snapDetail,
+        inDegree: node.inDegree,
+        outDegree: node.outDegree,
       },
     });
   }
