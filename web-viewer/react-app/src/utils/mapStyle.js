@@ -215,6 +215,10 @@ export function createMapStyle(game, mapInfo = null) {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
       },
+      "lane-graph-issues": {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      },
       route: {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
@@ -781,6 +785,29 @@ export function createMapStyle(game, mapInfo = null) {
             1.2,
           ],
           "circle-opacity": 0.95,
+        },
+      },
+      {
+        id: "lane-graph-issues",
+        type: "circle",
+        source: "lane-graph-issues",
+        filter: ["==", ["get", "featureType"], "issue"],
+        paint: {
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 5, 3, 9, 6, 13, 10],
+          "circle-color": [
+            "match",
+            ["get", "kind"],
+            "road_unmatched",
+            "#FF66CC",
+            "prefab_extra",
+            "#C77DFF",
+            "prefab_terminal",
+            "#FF8C1A",
+            "#FFFFFF",
+          ],
+          "circle-stroke-color": "#FFFFFF",
+          "circle-stroke-width": 2,
+          "circle-opacity": 0.9,
         },
       },
       // ── Speed camera markers ───────────────────────────────────────────────

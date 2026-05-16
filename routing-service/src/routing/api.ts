@@ -3,7 +3,7 @@ import * as path from 'path';
 import { Router, Request, Response } from 'express';
 import { loadGraph, loadMapBounds } from './loader';
 import { setGraphState, getAvailableGames } from './state';
-import { graphDebugHandler, laneGraphDebugHandler, loadEdgePaths, prefabPathsCache } from './debug';
+import { graphDebugHandler, laneGraphDebugHandler, laneGraphIssuesHandler, loadEdgePaths, prefabPathsCache } from './debug';
 import { MainComponentIndex } from './component';
 import { SpatialIndex } from './spatial-index';
 import { findNearestMainComponent, findNearestWithHeading } from './nearest';
@@ -171,6 +171,7 @@ router.get('/companies', (req: Request, res: Response) => {
 
 router.get('/graph/debug', graphDebugHandler);
 router.get('/lane-graph/debug', laneGraphDebugHandler);
+router.get('/lane-graph/issues', laneGraphIssuesHandler);
 
 router.get('/route', (req: Request, res: Response) => {
   const requestT0 = Date.now();

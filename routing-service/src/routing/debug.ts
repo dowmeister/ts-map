@@ -334,3 +334,49 @@ export function laneGraphDebugHandler(req: Request, res: Response): void {
   logDebug(`[LaneDebug:${game}] bbox X[${minX.toFixed(0)},${maxX.toFixed(0)}] Z[${minZ.toFixed(0)},${maxZ.toFixed(0)}] nodes=${visibleNodes}/${data.nodes.length} edges=${visibleEdges}/${data.edges.length} features=${features.length} ${Date.now() - t0}ms`);
   res.json({ type: 'FeatureCollection', features });
 }
+
+export function laneGraphIssuesHandler(req: Request, res: Response): void {
+  const t0 = Date.now();
+  const game = (req.query['game'] as string) || 'ets2';
+  const state = getGraphState(game);
+  if (!state) {
+    res.status(503).json({ error: `Routing engine not ready for game '${game}'` });
+    return;
+  }
+
+  const data = loadLaneGraphDebug(game);
+  if (!data) {
+    res.json({ type: 'FeatureCollection', features: [] });
+    return;
+  }
+
+  const issueKinds = new Set(['road_unmatched', 'prefab_extra']);
+  const bounds = state.graph.bounds;
+  const features: object[] = [];
+
+  for (const node of data.nodes) {
+    if (!issueKinds.has(node.kind)) continue;
+    const [lon, lat] = ets2ToWgs84(node.x, node.z, bounds);
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [lon, lat] },
+      properties: {
+        featureType: 'issue',
+        id: node.id,
+        x: node.x,
+        z: node.z,
+        kind: node.kind,
+        sourceUid: node.sourceUid,
+        lane: node.lane,
+        rawNodeUid: node.rawNodeUid,
+        snapStatus: node.snapStatus,
+        snapDetail: node.snapDetail,
+        inDegree: node.inDegree,
+        outDegree: node.outDegree,
+      },
+    });
+  }
+
+  logDebug(`[LaneIssues:${game}] issues=${features.length} ${Date.now() - t0}ms`);
+  res.json({ type: 'FeatureCollection', features });
+}

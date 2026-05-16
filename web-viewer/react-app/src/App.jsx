@@ -44,11 +44,12 @@ function App() {
   const [zoom, setZoom] = useState(4)
   const [bounds, setBounds] = useState(null)
   const [debugEnabled, setDebugEnabled] = useState(false)
+  const [debugIssuesEnabled, setDebugIssuesEnabled] = useState(false)
 
   const tileMapInfo = useTileMapInfo(currentGame)
   const cities = useCities(currentGame)
 
-  useDebugOverlay(mapInstance, tileMapInfo, debugEnabled)
+  useDebugOverlay(mapInstance, tileMapInfo, debugEnabled, debugIssuesEnabled)
 
   // Sync game to path, clear hash so position resets
   const handleGameChange = useCallback((newGame) => {
@@ -91,7 +92,12 @@ function App() {
         tileMapInfo={tileMapInfo}
       />
       <LayerToggle mapInstance={mapInstance} />
-      <DebugToggle enabled={debugEnabled} onToggle={setDebugEnabled} />
+      <DebugToggle
+        graphEnabled={debugEnabled}
+        issuesEnabled={debugIssuesEnabled}
+        onGraphToggle={setDebugEnabled}
+        onIssuesToggle={setDebugIssuesEnabled}
+      />
       <RoutePlanner
         mapInstance={mapInstance}
         tileMapInfo={tileMapInfo}

@@ -22,13 +22,17 @@ function createArrowImageData(size = 12) {
   return ctx.getImageData(0, 0, size, size)
 }
 
-export function useDebugOverlay(mapInstance, tileMapInfo, enabled) {
+export function useDebugOverlay(mapInstance, tileMapInfo, graphEnabled, issuesEnabled) {
   const arrowLoadedRef  = useRef(false)
   const fetchTimerRef   = useRef(null)
-  const enabledRef      = useRef(enabled)
+  const graphEnabledRef = useRef(graphEnabled)
+  const issuesEnabledRef = useRef(issuesEnabled)
   const popupRef        = useRef(null)
+  const issuesLoadedRef = useRef(false)
 
-  useEffect(() => { enabledRef.current = enabled }, [enabled])
+  useEffect(() => { graphEnabledRef.current = graphEnabled }, [graphEnabled])
+  useEffect(() => { issuesEnabledRef.current = issuesEnabled }, [issuesEnabled])
+  useEffect(() => { issuesLoadedRef.current = false }, [tileMapInfo?.game])
 
   // Load arrow icon once when map is available
   useEffect(() => {
@@ -56,14 +60,15 @@ export function useDebugOverlay(mapInstance, tileMapInfo, enabled) {
     const onStyleLoad = () => {
       arrowLoadedRef.current = false
       loadArrow(mapInstance)
-      if (enabledRef.current) fetchDebugData()
+      if (graphEnabledRef.current) fetchDebugData()
+      if (issuesEnabledRef.current) fetchIssuesData()
     }
     mapInstance.on('style.load', onStyleLoad)
     return () => mapInstance.off('style.load', onStyleLoad)
   }, [mapInstance])
 
   const fetchDebugData = useCallback(async () => {
-    if (!mapInstance || !tileMapInfo || !enabledRef.current) return
+    if (!mapInstance || !tileMapInfo || !graphEnabledRef.current) return
 
     const zoom   = mapInstance.getZoom()
     const laneSource = mapInstance.getSource('lane-graph-debug')
@@ -95,17 +100,36 @@ export function useDebugOverlay(mapInstance, tileMapInfo, enabled) {
     }
   }, [mapInstance, tileMapInfo])
 
+  const fetchIssuesData = useCallback(async () => {
+    if (!mapInstance || !tileMapInfo || !issuesEnabledRef.current || issuesLoadedRef.current) return
+    const issuesSource = mapInstance.getSource('lane-graph-issues')
+    if (!issuesSource) return
+
+    const game = tileMapInfo?.game || 'ets2'
+    const issuesUrl = `${ROUTING_BASE}/api/lane-graph/issues?game=${game}`
+    try {
+      const issuesRes = await fetch(issuesUrl)
+      if (issuesRes.ok) {
+        const issuesGeojson = await issuesRes.json()
+        issuesSource.setData(issuesGeojson)
+        issuesLoadedRef.current = true
+      }
+    } catch {
+      // Network errors: silently ignore (dev server may be stopped)
+    }
+  }, [mapInstance, tileMapInfo])
+
   // Debounced trigger on map move/zoom
   const debouncedFetch = useCallback(() => {
     clearTimeout(fetchTimerRef.current)
     fetchTimerRef.current = setTimeout(fetchDebugData, DEBOUNCE_MS)
   }, [fetchDebugData])
 
-  // Attach / detach move listeners and click popups based on enabled state
+  // Attach / detach lane graph listeners based on graph toggle
   useEffect(() => {
     if (!mapInstance) return
 
-    if (enabled) {
+    if (graphEnabled) {
       mapInstance.on('moveend', debouncedFetch)
       mapInstance.on('zoomend', debouncedFetch)
       fetchDebugData()
@@ -138,7 +162,32 @@ export function useDebugOverlay(mapInstance, tileMapInfo, enabled) {
       mapInstance.off('mouseenter', 'lane-graph-debug-edges', setCursorPointer)
       mapInstance.off('mouseleave', 'lane-graph-debug-edges', resetCursor)
     }
-  }, [enabled, mapInstance, debouncedFetch])
+  }, [graphEnabled, mapInstance, debouncedFetch])
+
+  // Attach / detach global issue markers based on issues toggle
+  useEffect(() => {
+    if (!mapInstance) return
+
+    if (issuesEnabled) {
+      fetchIssuesData()
+      mapInstance.on('click', 'lane-graph-issues', onLaneNodeClick)
+      mapInstance.on('mouseenter', 'lane-graph-issues', setCursorPointer)
+      mapInstance.on('mouseleave', 'lane-graph-issues', resetCursor)
+    } else {
+      mapInstance.off('click', 'lane-graph-issues', onLaneNodeClick)
+      mapInstance.off('mouseenter', 'lane-graph-issues', setCursorPointer)
+      mapInstance.off('mouseleave', 'lane-graph-issues', resetCursor)
+      const issuesSource = mapInstance.getSource('lane-graph-issues')
+      if (issuesSource) issuesSource.setData({ type: 'FeatureCollection', features: [] })
+      issuesLoadedRef.current = false
+    }
+
+    return () => {
+      mapInstance.off('click', 'lane-graph-issues', onLaneNodeClick)
+      mapInstance.off('mouseenter', 'lane-graph-issues', setCursorPointer)
+      mapInstance.off('mouseleave', 'lane-graph-issues', resetCursor)
+    }
+  }, [issuesEnabled, mapInstance, fetchIssuesData])
 
   function onLaneEdgeClick(e) {
     const p = e.features[0].properties
