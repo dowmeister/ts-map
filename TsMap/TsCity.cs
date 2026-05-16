@@ -13,6 +13,7 @@ namespace TsMap
         [JsonIgnore]
         public string LocalizationToken { get; set; }
         public string Country { get; set; }
+        public int? Population { get; set; }
         [JsonIgnore]
         public ulong Token { get; set; }
         [JsonIgnore]
@@ -58,6 +59,10 @@ namespace TsMap
                 else if (key == "country")
                 {
                     Country = value;
+                }
+                else if (key == "population")
+                {
+                    if (int.TryParse(value, out var population)) Population = population;
                 }
                 else if (key.Contains("map_x_offsets[]"))
                 {

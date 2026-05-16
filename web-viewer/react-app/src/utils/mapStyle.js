@@ -113,6 +113,78 @@ const _SECRET_ROAD_WIDTH = [
   ["case", ["==", ["get", "road_class"], "highway"], 5.5, 3.5],
 ];
 
+const _CITY_POPULATION_SCALE = [
+  "interpolate",
+  ["linear"],
+  ["coalesce", ["get", "population"], 150000],
+  0,
+  0.75,
+  40000,
+  1,
+  4000000,
+  1.5,
+];
+
+function _cityLabelLayer(id, minzoom, filter, font = "Klokantech Noto Sans Regular") {
+  return {
+    id,
+    type: "symbol",
+    source: "map",
+    "source-layer": "cities",
+    minzoom,
+    filter,
+    layout: {
+      "text-field": ["get", "localized_name"],
+      "text-font": [font],
+      "text-size": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        4,
+        ["*", 10, _CITY_POPULATION_SCALE],
+        7,
+        ["*", 13, _CITY_POPULATION_SCALE],
+        9,
+        ["*", 16, _CITY_POPULATION_SCALE],
+        12,
+        ["*", 20, _CITY_POPULATION_SCALE],
+      ],
+      "text-anchor": "top",
+      "text-offset": [0, 0.8],
+      "text-allow-overlap": false,
+      "text-ignore-placement": false,
+      "symbol-sort-key": ["-", ["coalesce", ["get", "population"], 150000]],
+    },
+    paint: {
+      "text-color": "#E8EEF2",
+      "text-halo-color": "#1A2733",
+      "text-halo-width": 2.5,
+      "text-opacity": 0.9,
+    },
+  };
+}
+
+function _cityLabelLayers() {
+  return [
+    _cityLabelLayer(
+      "city-labels-large",
+      5,
+      [">=", ["coalesce", ["get", "population"], 150000], 1000000],
+      "Klokantech Noto Sans Bold",
+    ),
+    _cityLabelLayer("city-labels-medium", 6, [
+      "all",
+      [">=", ["coalesce", ["get", "population"], 150000], 250000],
+      ["<", ["coalesce", ["get", "population"], 150000], 1000000],
+    ]),
+    _cityLabelLayer("city-labels-small", 7, [
+      "<",
+      ["coalesce", ["get", "population"], 150000],
+      250000,
+    ]),
+  ];
+}
+
 export const OVERLAY_LAYER_GROUPS = [
   //{ id: "map-background", label: "Map Background", layers: ["game-background"] },
   { id: "overlays-companies", label: "Companies" },
@@ -126,7 +198,11 @@ export const OVERLAY_LAYER_GROUPS = [
   { id: "overlays-busstop", label: "Bus Stops" },
   { id: "overlays-road", label: "Road Signs" },
   { id: "overlays-misc", label: "Other" },
-  { id: "city-labels", label: "City Names" },
+  {
+    id: "city-labels",
+    label: "City Names",
+    layers: ["city-labels-large", "city-labels-medium", "city-labels-small"],
+  },
   { id: "footprints", label: "Building Footprints" },
   { id: "prefab-buildings", label: "Prefab Buildings" },
   { id: "map-buildings", label: "Map Buildings" },
@@ -502,13 +578,13 @@ export function createMapStyle(game, mapInfo = null) {
             ["linear"],
             ["zoom"],
             5,
-            11,
+            ["*", 11, _CITY_POPULATION_SCALE],
             6,
-            13,
+            ["*", 13, _CITY_POPULATION_SCALE],
             8,
-            16,
+            ["*", 16, _CITY_POPULATION_SCALE],
             10,
-            20,
+            ["*", 20, _CITY_POPULATION_SCALE],
           ],
           "text-anchor": "top",
           "text-offset": [0, 0.8],
