@@ -531,7 +531,7 @@ namespace TsMap.Routing
 
             float lateralX = -avgZ;
             float lateralZ = avgX;
-            roadEndpoints.Sort((a, b) => Lateral(a, lateralX, lateralZ).CompareTo(Lateral(b, lateralX, lateralZ)));
+            roadEndpoints.Sort(CompareRoadLaneOrder);
             prefabEndpoints.Sort((a, b) => Lateral(a, lateralX, lateralZ).CompareTo(Lateral(b, lateralX, lateralZ)));
             roadEndpoints = UniqueEndpointsById(roadEndpoints);
             prefabEndpoints = BestEndpointPerIdForReferences(prefabEndpoints, roadEndpoints, maxSnapDistance, minDot);
@@ -572,6 +572,31 @@ namespace TsMap.Routing
             }
 
             return snapped;
+        }
+
+        private static int CompareRoadLaneOrder(LaneEndpoint a, LaneEndpoint b)
+        {
+            int side = RoadLaneSideRank(a).CompareTo(RoadLaneSideRank(b));
+            if (side != 0) return side;
+            int lane = RoadLaneIndex(a).CompareTo(RoadLaneIndex(b));
+            if (lane != 0) return lane;
+            return string.CompareOrdinal(a.Id, b.Id);
+        }
+
+        private static int RoadLaneSideRank(LaneEndpoint endpoint)
+        {
+            var lane = endpoint.Edge.Lane ?? "";
+            if (lane.StartsWith("left:", StringComparison.Ordinal)) return 0;
+            if (lane.StartsWith("right:", StringComparison.Ordinal)) return 1;
+            return 2;
+        }
+
+        private static int RoadLaneIndex(LaneEndpoint endpoint)
+        {
+            var lane = endpoint.Edge.Lane ?? "";
+            int colon = lane.IndexOf(':');
+            if (colon < 0 || colon + 1 >= lane.Length) return 0;
+            return int.TryParse(lane.Substring(colon + 1), out var value) ? value : 0;
         }
 
         private void QueueRoadEndpointSnap(LaneEndpoint endpoint, float targetX, float targetZ)
@@ -1013,19 +1038,19 @@ namespace TsMap.Routing
             var result = new float[center.Length][];
             for (int i = 0; i < center.Length; i++)
             {
-                int prevIdx = i == 0 ? 0 : i - 1;
-                int nextIdx = i == center.Length - 1 ? center.Length - 1 : i + 1;
-                float tx = center[nextIdx][0] - center[prevIdx][0];
-                float tz = center[nextIdx][1] - center[prevIdx][1];
-                float len = (float)Math.Sqrt(tx * tx + tz * tz);
+                int prev = Math.Max(0, i - 1);
+                int next = Math.Min(center.Length - 1, i + 1);
+                float dx = center[next][0] - center[prev][0];
+                float dz = center[next][1] - center[prev][1];
+                float len = (float)Math.Sqrt(dx * dx + dz * dz);
                 if (len < 0.001f)
                 {
                     result[i] = new[] { center[i][0], center[i][1] };
                     continue;
                 }
 
-                float nx = -tz / len;
-                float nz = tx / len;
+                float nx = -dz / len;
+                float nz = dx / len;
                 result[i] = new[] { center[i][0] + nx * offset, center[i][1] + nz * offset };
             }
             return result;
