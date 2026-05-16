@@ -604,6 +604,19 @@ namespace TsMap
                 var localizedName = _mapper.Localization?.GetLocaleValue(city.LocalizationToken) ?? city.Name;
                 var (lon, lat) = GameToLatLng(node.X, node.Z);
 
+                var properties = new JObject
+                {
+                    ["name"] = city.Name,
+                    ["localized_name"] = localizedName,
+                    ["country"] = city.Country,
+                    ["token"] = city.Token
+                };
+
+                if (city.Population.HasValue)
+                {
+                    properties["population"] = city.Population.Value;
+                }
+
                 features.Add(new JObject
                 {
                     ["type"] = "Feature",
@@ -613,13 +626,7 @@ namespace TsMap
                         ["type"] = "Point",
                         ["coordinates"] = new JArray { lon, lat }
                     },
-                    ["properties"] = new JObject
-                    {
-                        ["name"] = city.Name,
-                        ["localized_name"] = localizedName,
-                        ["country"] = city.Country,
-                        ["token"] = city.Token
-                    }
+                    ["properties"] = properties
                 });
             }
 
