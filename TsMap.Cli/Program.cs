@@ -33,7 +33,7 @@ namespace TsMap.Cli
 
             var formatOption = new Option<ExportFormat>(
                 name: "--format",
-                description: "Export format: geojson, json, or all",
+                description: "Export format: geojson (tiles), routing (graph), or all",
                 getDefaultValue: () => ExportFormat.All);
             formatOption.AddAlias("-f");
 
@@ -147,16 +147,17 @@ namespace TsMap.Cli
                 Console.WriteLine($"Found {mapper.FerryConnections.Count:N0} ferry connections");
                 Console.WriteLine();
 
-                // Export GeoJSON
+                var geoJsonPath = Path.Combine(outputDir.FullName, "geojson");
+                RoutingGraph capturedGraph = null;
+
+                // Export GeoJSON (tiles)
                 if (format == ExportFormat.GeoJson || format == ExportFormat.All)
                 {
                     Console.WriteLine("Exporting GeoJSON files...");
-                    var geoJsonPath = Path.Combine(outputDir.FullName, "geojson");
                     Directory.CreateDirectory(geoJsonPath);
 
                     var projectionBounds = MapProjection.GetWorldMapBounds();
                     var exporter = new GeoJsonExporter(mapper);
-                    RoutingGraph capturedGraph = null;
 
                     await Task.Run(() =>
                     {
@@ -260,7 +261,19 @@ namespace TsMap.Cli
                         Console.WriteLine("✓");
                         Console.ResetColor();
                         */
+                    });
 
+                    Console.WriteLine();
+                }
+
+                // Export routing graph
+                if (format == ExportFormat.Routing || format == ExportFormat.All)
+                {
+                    Console.WriteLine("Exporting routing graph...");
+                    Directory.CreateDirectory(geoJsonPath);
+
+                    await Task.Run(() =>
+                    {
                         Console.Write("  → routing-graph.json... ");
                         capturedGraph = new RoutingGraphBuilder(mapper).Build();
                         var graphExporter = new GraphExporter(capturedGraph);
@@ -280,19 +293,6 @@ namespace TsMap.Cli
                         Console.WriteLine("Running routing graph validation...");
                         new GraphValidator(mapper, capturedGraph).Validate(geoJsonPath);
                     }
-
-                    Console.WriteLine();
-                }
-
-                // Export JSON data
-                if (format == ExportFormat.Json || format == ExportFormat.All)
-                {
-                    Console.WriteLine("Exporting JSON data files...");
-
-                    await Task.Run(() =>
-                    {
-                        mapper.ExportInfo(outputDir.FullName);
-                    });
 
                     Console.WriteLine();
                 }
@@ -390,7 +390,7 @@ namespace TsMap.Cli
     enum ExportFormat
     {
         GeoJson,
-        Json,
+        Routing,
         All
     }
 }
