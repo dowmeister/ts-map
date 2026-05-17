@@ -148,6 +148,7 @@ namespace TsMap.Cli
                 Console.WriteLine();
 
                 var geoJsonPath = Path.Combine(outputDir.FullName, "geojson");
+                var routingPath = Path.Combine(outputDir.FullName, "routing");
                 RoutingGraph capturedGraph = null;
 
                 // Export GeoJSON (tiles)
@@ -270,18 +271,18 @@ namespace TsMap.Cli
                 if (format == ExportFormat.Routing || format == ExportFormat.All)
                 {
                     Console.WriteLine("Exporting routing graph...");
-                    Directory.CreateDirectory(geoJsonPath);
+                    Directory.CreateDirectory(routingPath);
 
                     await Task.Run(() =>
                     {
                         Console.Write("  → routing-graph.json... ");
                         capturedGraph = new RoutingGraphBuilder(mapper).Build();
                         var graphExporter = new GraphExporter(capturedGraph);
-                        graphExporter.Export(Path.Combine(geoJsonPath, "routing-graph.json"));
-                        graphExporter.ExportPrefabPaths(Path.Combine(geoJsonPath, "routing-edge-paths.json"));
+                        graphExporter.Export(Path.Combine(routingPath, "routing-graph.json"));
+                        graphExporter.ExportPrefabPaths(Path.Combine(routingPath, "routing-edge-paths.json"));
                         var laneGraphDebugExporter = new LaneGraphDebugExporter(mapper);
-                        laneGraphDebugExporter.Export(Path.Combine(geoJsonPath, "routing-lane-graph-debug.json"));
-                        laneGraphDebugExporter.ExportGeoJson(Path.Combine(geoJsonPath, "routing-lane-graph-debug.geojson"));
+                        laneGraphDebugExporter.ExportSplit(routingPath, "routing-lane-graph-debug");
+                        laneGraphDebugExporter.ExportGeoJson(Path.Combine(routingPath, "routing-lane-graph-debug.geojson"));
                         Console.ForegroundColor = ConsoleColor.Green;
                         Console.WriteLine($"✓ ({capturedGraph.Nodes.Count:N0} nodes, {capturedGraph.Edges.Count:N0} edges)");
                         Console.ResetColor();
@@ -291,7 +292,7 @@ namespace TsMap.Cli
                     {
                         Console.WriteLine();
                         Console.WriteLine("Running routing graph validation...");
-                        new GraphValidator(mapper, capturedGraph).Validate(geoJsonPath);
+                        new GraphValidator(mapper, capturedGraph).Validate(routingPath);
                     }
 
                     Console.WriteLine();

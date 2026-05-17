@@ -5,6 +5,7 @@ import CitySelector from './components/CitySelector'
 import CoordinateInfo from './components/CoordinateInfo'
 import DebugToggle from './components/DebugToggle'
 import LayerToggle from './components/LayerToggle'
+import PolygonTool from './components/PolygonTool'
 import RoutePlanner from './components/RoutePlanner'
 import { useTileMapInfo } from './hooks/useTileMapInfo'
 import { useCities } from './hooks/useCities'
@@ -97,6 +98,10 @@ function App() {
         issuesEnabled={debugIssuesEnabled}
         onGraphToggle={setDebugEnabled}
         onIssuesToggle={setDebugIssuesEnabled}
+      />
+      <PolygonTool
+        mapInstance={mapInstance}
+        tileMapInfo={tileMapInfo}
       />
       <RoutePlanner
         mapInstance={mapInstance}

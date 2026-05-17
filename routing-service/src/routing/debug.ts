@@ -34,25 +34,51 @@ type LaneGraphDebugEdge = {
   kind: string;
   sourceUid?: string;
   lane?: string;
+  direction?: string;
+  trafficSide?: string;
+  isTemporaryLeftHandTrafficRoad?: boolean;
+  midX?: number;
+  midZ?: number;
+  pathStartRawNodeUid?: string;
+  pathEndRawNodeUid?: string;
   path: [number, number][];
 };
 type LaneGraphDebugData = {
   nodes: LaneGraphDebugNode[];
   edges: LaneGraphDebugEdge[];
 };
+type LaneGraphDebugManifest = {
+  meta?: {
+    nodeCount?: number;
+    edgeCount?: number;
+    split?: boolean;
+  };
+  nodes?: string[] | LaneGraphDebugNode[];
+  edges?: string[] | LaneGraphDebugEdge[];
+};
 const laneGraphCache: Record<string, LaneGraphDebugData | null> = {};
+
+function firstExistingPath(paths: string[]): string | null {
+  for (const filePath of paths) {
+    if (fs.existsSync(filePath)) return filePath;
+  }
+  return null;
+}
 
 export function loadEdgePaths(game: string): void {
   if (prefabPathsLoaded[game]) return;
   prefabPathsLoaded[game] = true;
   const t0 = Date.now();
   try {
-    const filePath = path.join(MAP_DATA_PATH, game, 'geojson', 'routing-edge-paths.json');
-    if (fs.existsSync(filePath)) {
+    const filePath = firstExistingPath([
+      path.join(MAP_DATA_PATH, game, 'routing', 'routing-edge-paths.json'),
+      path.join(MAP_DATA_PATH, game, 'geojson', 'routing-edge-paths.json'),
+    ]);
+    if (filePath) {
       prefabPathsCache[game] = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as Record<string, [number,number][]>;
       logDebug(`[Debug:${game}] Loaded edge paths: ${Object.keys(prefabPathsCache[game]).length} in ${Date.now() - t0}ms`);
     } else {
-      logDebug(`[Debug:${game}] Edge paths file not found: ${filePath}`);
+      logDebug(`[Debug:${game}] Edge paths file not found`);
     }
   } catch (err) {
     logDebug(`[Debug:${game}] Failed to load edge paths: ${err instanceof Error ? err.message : String(err)}`);
@@ -184,13 +210,39 @@ function loadLaneGraphDebug(game: string): LaneGraphDebugData | null {
   if (game in laneGraphCache) return laneGraphCache[game];
   const t0 = Date.now();
   try {
-    const filePath = path.join(MAP_DATA_PATH, game, 'geojson', 'routing-lane-graph-debug.json');
-    if (!fs.existsSync(filePath)) {
+    const filePath = firstExistingPath([
+      path.join(MAP_DATA_PATH, game, 'routing', 'routing-lane-graph-debug.json'),
+      path.join(MAP_DATA_PATH, game, 'geojson', 'routing-lane-graph-debug.json'),
+    ]);
+    if (!filePath) {
       laneGraphCache[game] = null;
-      logDebug(`[LaneDebug:${game}] Lane graph file not found: ${filePath}`);
+      logDebug(`[LaneDebug:${game}] Lane graph file not found`);
       return null;
     }
-    laneGraphCache[game] = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as LaneGraphDebugData;
+
+    const manifest = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as LaneGraphDebugManifest;
+    const baseDir = path.dirname(filePath);
+    if (manifest.meta?.split) {
+      const nodes: LaneGraphDebugNode[] = [];
+      const edges: LaneGraphDebugEdge[] = [];
+
+      for (const fileName of manifest.nodes ?? []) {
+        if (typeof fileName !== 'string') continue;
+        const chunk = JSON.parse(fs.readFileSync(path.join(baseDir, fileName), 'utf-8')) as LaneGraphDebugNode[];
+        for (const item of chunk) nodes.push(item);
+      }
+
+      for (const fileName of manifest.edges ?? []) {
+        if (typeof fileName !== 'string') continue;
+        const chunk = JSON.parse(fs.readFileSync(path.join(baseDir, fileName), 'utf-8')) as LaneGraphDebugEdge[];
+        for (const item of chunk) edges.push(item);
+      }
+
+      laneGraphCache[game] = { nodes, edges };
+    } else {
+      laneGraphCache[game] = manifest as LaneGraphDebugData;
+    }
+
     logDebug(`[LaneDebug:${game}] Loaded lane graph: ${laneGraphCache[game]?.nodes.length ?? 0} nodes, ${laneGraphCache[game]?.edges.length ?? 0} edges in ${Date.now() - t0}ms`);
     return laneGraphCache[game];
   } catch (err) {
@@ -288,6 +340,13 @@ export function laneGraphDebugHandler(req: Request, res: Response): void {
         kind: edge.kind,
         sourceUid: edge.sourceUid,
         lane: edge.lane,
+        direction: edge.direction,
+        trafficSide: edge.trafficSide,
+        isTemporaryLeftHandTrafficRoad: edge.isTemporaryLeftHandTrafficRoad,
+        midX: edge.midX,
+        midZ: edge.midZ,
+        pathStartRawNodeUid: edge.pathStartRawNodeUid,
+        pathEndRawNodeUid: edge.pathEndRawNodeUid,
       },
     });
 
@@ -302,6 +361,13 @@ export function laneGraphDebugHandler(req: Request, res: Response): void {
           kind: edge.kind,
           sourceUid: edge.sourceUid,
           lane: edge.lane,
+          direction: edge.direction,
+          trafficSide: edge.trafficSide,
+          isTemporaryLeftHandTrafficRoad: edge.isTemporaryLeftHandTrafficRoad,
+          midX: edge.midX,
+          midZ: edge.midZ,
+          pathStartRawNodeUid: edge.pathStartRawNodeUid,
+          pathEndRawNodeUid: edge.pathEndRawNodeUid,
         },
       });
     }

@@ -40,7 +40,8 @@ function discoverGames(mapDataPath: string): string[] {
     return fs.readdirSync(mapDataPath).filter(dir => {
       try {
         return fs.statSync(path.join(mapDataPath, dir)).isDirectory() &&
-               fs.existsSync(path.join(mapDataPath, dir, 'geojson', 'routing-graph.json'));
+               (fs.existsSync(path.join(mapDataPath, dir, 'routing', 'routing-graph.json')) ||
+                fs.existsSync(path.join(mapDataPath, dir, 'geojson', 'routing-graph.json')));
       } catch { return false; }
     });
   } catch {
@@ -49,7 +50,9 @@ function discoverGames(mapDataPath: string): string[] {
 }
 
 function loadGame(mapDataPath: string, game: string): void {
-  const graphPath = path.join(mapDataPath, game, 'geojson', 'routing-graph.json');
+  const newGraphPath = path.join(mapDataPath, game, 'routing', 'routing-graph.json');
+  const oldGraphPath = path.join(mapDataPath, game, 'geojson', 'routing-graph.json');
+  const graphPath = fs.existsSync(newGraphPath) ? newGraphPath : oldGraphPath;
   console.log(`[Routing:${game}] Loading bounds...`);
   const bounds = loadMapBounds(mapDataPath, game);
   console.log(`[Routing:${game}] Bounds X[${bounds.minX.toFixed(0)},${bounds.maxX.toFixed(0)}] Z[${bounds.minZ.toFixed(0)},${bounds.maxZ.toFixed(0)}]`);

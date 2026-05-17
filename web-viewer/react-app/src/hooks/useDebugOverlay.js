@@ -199,7 +199,12 @@ export function useDebugOverlay(mapInstance, tileMapInfo, graphEnabled, issuesEn
         to: <code>${p.to}</code><br/>
         kind: <b>${p.kind}</b><br/>
         lane: <code>${p.lane || ''}</code><br/>
-        source: <code>${p.sourceUid || ''}</code>`)
+        source: <code>${p.sourceUid || ''}</code><br/>
+        direction: <code>${p.direction || ''}</code><br/>
+        traffic: <code>${p.trafficSide || ''}</code><br/>
+        temp LHT: <code>${String(p.isTemporaryLeftHandTrafficRoad ?? '')}</code><br/>
+        mid: <code>${Number(p.midX ?? 0).toFixed(1)}, ${Number(p.midZ ?? 0).toFixed(1)}</code><br/>
+        path raw: <code>${p.pathStartRawNodeUid || ''} -> ${p.pathEndRawNodeUid || ''}</code>`)
       .addTo(mapInstance)
   }
 

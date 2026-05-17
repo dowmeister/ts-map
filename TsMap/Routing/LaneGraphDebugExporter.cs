@@ -10,13 +10,53 @@ namespace TsMap.Routing
 {
     public class LaneGraphDebugExporter
     {
+        private const string ExportMode = "prefabs-and-raw-roads";
+        private static readonly bool IncludeRoads = true;
+        private static readonly bool IncludeRoadToPrefabLinks = true;
+        private static readonly bool IncludePrefabToPrefabLinks = true;
+        private static readonly bool ApplyRoadSnapGeometry = false;
+        private static readonly float[][] TemporaryLeftHandTrafficPolygon =
+        {
+            new[] { -62030.5f, -6615.0f },
+            new[] { -48707.7f, -4467.4f },
+            new[] { -38804.2f, -4366.6f },
+            new[] { -31103.3f, -7262.3f },
+            new[] { -29374.2f, -13932.0f },
+            new[] { -34086.6f, -25735.9f },
+            new[] { -34958.8f, -30229.1f },
+            new[] { -35291.0f, -39108.4f },
+            new[] { -35586.4f, -50218.0f },
+            new[] { -36149.6f, -55379.8f },
+            new[] { -39478.5f, -57071.3f },
+            new[] { -42587.4f, -57166.5f },
+            new[] { -46972.9f, -55802.4f },
+            new[] { -49538.2f, -53900.1f },
+            new[] { -51035.4f, -51636.3f },
+            new[] { -51913.2f, -48703.0f },
+            new[] { -51140.2f, -44062.3f },
+            new[] { -50612.0f, -40392.3f },
+            new[] { -49390.4f, -37653.3f },
+            new[] { -48675.5f, -34667.1f },
+            new[] { -48892.8f, -32278.8f },
+            new[] { -50510.7f, -29311.9f },
+            new[] { -51833.3f, -26622.8f },
+            new[] { -53665.7f, -24733.7f },
+            new[] { -56046.1f, -22704.7f },
+            new[] { -57413.0f, -20112.6f },
+            new[] { -59098.8f, -17948.7f },
+            new[] { -59607.7f, -16090.4f },
+            new[] { -60268.0f, -13678.7f },
+            new[] { -61046.6f, -10569.2f },
+            new[] { -61630.4f, -9232.7f },
+            new[] { -62109.9f, -6685.0f },
+        };
+
         private readonly TsMapper _mapper;
         private readonly Dictionary<string, LaneDebugNode> _nodes = new Dictionary<string, LaneDebugNode>();
         private readonly List<LaneDebugEdge> _edges = new List<LaneDebugEdge>();
         private readonly List<LaneEndpoint> _endpoints = new List<LaneEndpoint>();
         private readonly HashSet<string> _matchedEndpointIds = new HashSet<string>();
         private readonly Dictionary<LaneDebugEdge, EdgeSnapTargets> _pendingRoadSnaps = new Dictionary<LaneDebugEdge, EdgeSnapTargets>();
-
         public LaneGraphDebugExporter(TsMapper mapper)
         {
             _mapper = mapper;
@@ -30,10 +70,10 @@ namespace TsMap.Routing
             _matchedEndpointIds.Clear();
             _pendingRoadSnaps.Clear();
 
-            ProcessRoads();
+            if (IncludeRoads) ProcessRoads();
             ProcessPrefabs();
-            SnapRoadEndpointsToPrefabs();
-            SnapPrefabEndpointsToPrefabs();
+            if (IncludeRoadToPrefabLinks) SnapRoadEndpointsToPrefabs();
+            if (IncludePrefabToPrefabLinks) SnapPrefabEndpointsToPrefabs();
             ComputeNodeDegrees();
 
             Logger.Instance.Info($"[LaneGraphDebug] Writing {filePath} ...");
@@ -48,6 +88,7 @@ namespace TsMap.Routing
                 jw.WriteStartObject();
                 jw.WritePropertyName("nodeCount"); jw.WriteValue(_nodes.Count);
                 jw.WritePropertyName("edgeCount"); jw.WriteValue(_edges.Count);
+                jw.WritePropertyName("mode"); jw.WriteValue(ExportMode);
                 jw.WritePropertyName("generatedAt"); jw.WriteValue(DateTime.UtcNow.ToString("o"));
                 jw.WriteEndObject();
 
@@ -81,6 +122,13 @@ namespace TsMap.Routing
                     jw.WritePropertyName("kind"); jw.WriteValue(edge.Kind);
                     jw.WritePropertyName("sourceUid"); jw.WriteValue(edge.SourceUid);
                     jw.WritePropertyName("lane"); jw.WriteValue(edge.Lane);
+                    jw.WritePropertyName("direction"); jw.WriteValue(edge.Direction);
+                    jw.WritePropertyName("trafficSide"); jw.WriteValue(edge.TrafficSide);
+                    jw.WritePropertyName("isTemporaryLeftHandTrafficRoad"); jw.WriteValue(edge.IsTemporaryLeftHandTrafficRoad);
+                    jw.WritePropertyName("midX"); jw.WriteValue(edge.MidX);
+                    jw.WritePropertyName("midZ"); jw.WriteValue(edge.MidZ);
+                    jw.WritePropertyName("pathStartRawNodeUid"); jw.WriteValue(edge.PathStartRawNodeUid);
+                    jw.WritePropertyName("pathEndRawNodeUid"); jw.WriteValue(edge.PathEndRawNodeUid);
                     jw.WritePropertyName("path");
                     jw.WriteStartArray();
                     foreach (var pt in edge.Path)
@@ -100,6 +148,189 @@ namespace TsMap.Routing
             Logger.Instance.Info($"[LaneGraphDebug] Export complete: {_nodes.Count} nodes, {_edges.Count} edges");
         }
 
+        public void ExportSplit(string directoryPath, string baseName)
+        {
+            const int NodeChunkSize = 100000;
+            const int EdgeChunkSize = 50000;
+
+            _nodes.Clear();
+            _edges.Clear();
+            _endpoints.Clear();
+            _matchedEndpointIds.Clear();
+            _pendingRoadSnaps.Clear();
+
+            if (IncludeRoads) ProcessRoads();
+            ProcessPrefabs();
+            if (IncludeRoadToPrefabLinks) SnapRoadEndpointsToPrefabs();
+            if (IncludePrefabToPrefabLinks) SnapPrefabEndpointsToPrefabs();
+            ComputeNodeDegrees();
+
+            Directory.CreateDirectory(directoryPath);
+            DeleteExistingSplitFiles(directoryPath, baseName);
+
+            Logger.Instance.Info($"[LaneGraphDebug] Writing split debug graph {Path.Combine(directoryPath, baseName)}.* ...");
+
+            var nodeFiles = new List<string>();
+            int nodeIndex = 0;
+            int nodesInChunk = 0;
+            JsonTextWriter nodeWriter = null;
+            StreamWriter nodeStreamWriter = null;
+            FileStream nodeFileStream = null;
+            try
+            {
+                foreach (var node in _nodes.Values)
+                {
+                    if (nodeWriter == null || nodesInChunk >= NodeChunkSize)
+                    {
+                        CloseArrayWriter(nodeWriter, nodeStreamWriter, nodeFileStream);
+                        string fileName = $"{baseName}.nodes.{nodeIndex:000}.json";
+                        nodeFiles.Add(fileName);
+                        nodeFileStream = new FileStream(Path.Combine(directoryPath, fileName), FileMode.Create, FileAccess.Write);
+                        nodeStreamWriter = new StreamWriter(nodeFileStream);
+                        nodeWriter = new JsonTextWriter(nodeStreamWriter) { Formatting = Formatting.None };
+                        nodeWriter.WriteStartArray();
+                        nodeIndex++;
+                        nodesInChunk = 0;
+                    }
+                    WriteNodeObject(nodeWriter, node);
+                    nodesInChunk++;
+                }
+            }
+            finally
+            {
+                CloseArrayWriter(nodeWriter, nodeStreamWriter, nodeFileStream);
+            }
+
+            var edgeFiles = new List<string>();
+            int edgeIndex = 0;
+            int edgesInChunk = 0;
+            JsonTextWriter edgeWriter = null;
+            StreamWriter edgeStreamWriter = null;
+            FileStream edgeFileStream = null;
+            try
+            {
+                foreach (var edge in _edges)
+                {
+                    if (edgeWriter == null || edgesInChunk >= EdgeChunkSize)
+                    {
+                        CloseArrayWriter(edgeWriter, edgeStreamWriter, edgeFileStream);
+                        string fileName = $"{baseName}.edges.{edgeIndex:000}.json";
+                        edgeFiles.Add(fileName);
+                        edgeFileStream = new FileStream(Path.Combine(directoryPath, fileName), FileMode.Create, FileAccess.Write);
+                        edgeStreamWriter = new StreamWriter(edgeFileStream);
+                        edgeWriter = new JsonTextWriter(edgeStreamWriter) { Formatting = Formatting.None };
+                        edgeWriter.WriteStartArray();
+                        edgeIndex++;
+                        edgesInChunk = 0;
+                    }
+                    WriteEdgeObject(edgeWriter, edge);
+                    edgesInChunk++;
+                }
+            }
+            finally
+            {
+                CloseArrayWriter(edgeWriter, edgeStreamWriter, edgeFileStream);
+            }
+
+            using (var fs = new FileStream(Path.Combine(directoryPath, baseName + ".json"), FileMode.Create, FileAccess.Write))
+            using (var sw = new StreamWriter(fs))
+            using (var jw = new JsonTextWriter(sw))
+            {
+                jw.Formatting = Formatting.Indented;
+                jw.WriteStartObject();
+
+                jw.WritePropertyName("meta");
+                jw.WriteStartObject();
+                jw.WritePropertyName("nodeCount"); jw.WriteValue(_nodes.Count);
+                jw.WritePropertyName("edgeCount"); jw.WriteValue(_edges.Count);
+                jw.WritePropertyName("mode"); jw.WriteValue(ExportMode);
+                jw.WritePropertyName("split"); jw.WriteValue(true);
+                jw.WritePropertyName("generatedAt"); jw.WriteValue(DateTime.UtcNow.ToString("o"));
+                jw.WriteEndObject();
+
+                jw.WritePropertyName("nodes");
+                jw.WriteStartArray();
+                foreach (var fileName in nodeFiles) jw.WriteValue(fileName);
+                jw.WriteEndArray();
+
+                jw.WritePropertyName("edges");
+                jw.WriteStartArray();
+                foreach (var fileName in edgeFiles) jw.WriteValue(fileName);
+                jw.WriteEndArray();
+
+                jw.WriteEndObject();
+            }
+
+            Logger.Instance.Info($"[LaneGraphDebug] Split export complete: {_nodes.Count} nodes in {nodeFiles.Count} files, {_edges.Count} edges in {edgeFiles.Count} files");
+        }
+
+        private static void DeleteExistingSplitFiles(string directoryPath, string baseName)
+        {
+            foreach (var file in Directory.GetFiles(directoryPath, baseName + ".nodes.*.json"))
+                File.Delete(file);
+            foreach (var file in Directory.GetFiles(directoryPath, baseName + ".edges.*.json"))
+                File.Delete(file);
+        }
+
+        private static void CloseArrayWriter(JsonTextWriter writer, StreamWriter streamWriter, FileStream fileStream)
+        {
+            if (writer != null)
+            {
+                writer.WriteEndArray();
+                writer.Flush();
+                writer.Close();
+                return;
+            }
+
+            streamWriter?.Close();
+            fileStream?.Close();
+        }
+
+        private static void WriteNodeObject(JsonTextWriter jw, LaneDebugNode node)
+        {
+            jw.WriteStartObject();
+            jw.WritePropertyName("id"); jw.WriteValue(node.Id);
+            jw.WritePropertyName("x"); jw.WriteValue(Math.Round(node.X, 4));
+            jw.WritePropertyName("z"); jw.WriteValue(Math.Round(node.Z, 4));
+            jw.WritePropertyName("kind"); jw.WriteValue(node.Kind);
+            jw.WritePropertyName("sourceUid"); jw.WriteValue(node.SourceUid);
+            jw.WritePropertyName("lane"); jw.WriteValue(node.Lane);
+            jw.WritePropertyName("rawNodeUid"); jw.WriteValue(node.RawNodeUid);
+            jw.WritePropertyName("snapStatus"); jw.WriteValue(node.SnapStatus);
+            jw.WritePropertyName("snapDetail"); jw.WriteValue(node.SnapDetail);
+            jw.WritePropertyName("inDegree"); jw.WriteValue(node.InDegree);
+            jw.WritePropertyName("outDegree"); jw.WriteValue(node.OutDegree);
+            jw.WriteEndObject();
+        }
+
+        private static void WriteEdgeObject(JsonTextWriter jw, LaneDebugEdge edge)
+        {
+            jw.WriteStartObject();
+            jw.WritePropertyName("from"); jw.WriteValue(edge.From);
+            jw.WritePropertyName("to"); jw.WriteValue(edge.To);
+            jw.WritePropertyName("kind"); jw.WriteValue(edge.Kind);
+            jw.WritePropertyName("sourceUid"); jw.WriteValue(edge.SourceUid);
+            jw.WritePropertyName("lane"); jw.WriteValue(edge.Lane);
+            jw.WritePropertyName("direction"); jw.WriteValue(edge.Direction);
+            jw.WritePropertyName("trafficSide"); jw.WriteValue(edge.TrafficSide);
+            jw.WritePropertyName("isTemporaryLeftHandTrafficRoad"); jw.WriteValue(edge.IsTemporaryLeftHandTrafficRoad);
+            jw.WritePropertyName("midX"); jw.WriteValue(edge.MidX);
+            jw.WritePropertyName("midZ"); jw.WriteValue(edge.MidZ);
+            jw.WritePropertyName("pathStartRawNodeUid"); jw.WriteValue(edge.PathStartRawNodeUid);
+            jw.WritePropertyName("pathEndRawNodeUid"); jw.WriteValue(edge.PathEndRawNodeUid);
+            jw.WritePropertyName("path");
+            jw.WriteStartArray();
+            foreach (var pt in edge.Path)
+            {
+                jw.WriteStartArray();
+                jw.WriteValue(Math.Round(pt[0], 4));
+                jw.WriteValue(Math.Round(pt[1], 4));
+                jw.WriteEndArray();
+            }
+            jw.WriteEndArray();
+            jw.WriteEndObject();
+        }
+
         public void ExportGeoJson(string filePath)
         {
             if (_nodes.Count == 0 && _edges.Count == 0)
@@ -107,10 +338,10 @@ namespace TsMap.Routing
                 _endpoints.Clear();
                 _matchedEndpointIds.Clear();
                 _pendingRoadSnaps.Clear();
-                ProcessRoads();
+                if (IncludeRoads) ProcessRoads();
                 ProcessPrefabs();
-                SnapRoadEndpointsToPrefabs();
-                SnapPrefabEndpointsToPrefabs();
+                if (IncludeRoadToPrefabLinks) SnapRoadEndpointsToPrefabs();
+                if (IncludePrefabToPrefabLinks) SnapPrefabEndpointsToPrefabs();
                 ComputeNodeDegrees();
             }
 
@@ -145,7 +376,7 @@ namespace TsMap.Routing
                     }
                     jw.WriteEndArray();
                     jw.WriteEndObject();
-                    WriteProperties(jw, "edge", edge.Kind, edge.SourceUid, edge.Lane, edge.From, edge.To);
+                    WriteProperties(jw, "edge", edge.Kind, edge.SourceUid, edge.Lane, edge.From, edge.To, edge: edge);
                     jw.WriteEndObject();
                 }
 
@@ -184,7 +415,8 @@ namespace TsMap.Routing
             string snapStatus = null,
             string snapDetail = null,
             int inDegree = 0,
-            int outDegree = 0)
+            int outDegree = 0,
+            LaneDebugEdge edge = null)
         {
             jw.WritePropertyName("properties");
             jw.WriteStartObject();
@@ -205,6 +437,16 @@ namespace TsMap.Routing
             {
                 jw.WritePropertyName("from"); jw.WriteValue(idOrFrom);
                 jw.WritePropertyName("to"); jw.WriteValue(to);
+                if (edge != null)
+                {
+                    jw.WritePropertyName("direction"); jw.WriteValue(edge.Direction);
+                    jw.WritePropertyName("trafficSide"); jw.WriteValue(edge.TrafficSide);
+                    jw.WritePropertyName("isTemporaryLeftHandTrafficRoad"); jw.WriteValue(edge.IsTemporaryLeftHandTrafficRoad);
+                    jw.WritePropertyName("midX"); jw.WriteValue(edge.MidX);
+                    jw.WritePropertyName("midZ"); jw.WriteValue(edge.MidZ);
+                    jw.WritePropertyName("pathStartRawNodeUid"); jw.WriteValue(edge.PathStartRawNodeUid);
+                    jw.WritePropertyName("pathEndRawNodeUid"); jw.WriteValue(edge.PathEndRawNodeUid);
+                }
             }
             jw.WriteEndObject();
         }
@@ -223,22 +465,73 @@ namespace TsMap.Routing
                 var center = BuildRoadCenterline(startNode, endNode);
                 int leftCount = road.RoadLook.LanesLeft.Count;
                 int rightCount = road.RoadLook.LanesRight.Count;
+                float roadMidX = (startNode.X + endNode.X) * 0.5f;
+                float roadMidZ = (startNode.Z + endNode.Z) * 0.5f;
+                bool invertRoadLaneDirection = IsTemporaryLeftHandTrafficRoad(roadMidX, roadMidZ);
 
                 for (int lane = 0; lane < rightCount; lane++)
                 {
                     float offset = RoadLaneOffset(road.RoadLook, lane, rightSide: true);
                     var path = OffsetPolyline(center, offset);
-                    AddRoadLane(road, "right", lane, path, forward: true, startNode.Uid, endNode.Uid);
+                    if (invertRoadLaneDirection) Array.Reverse(path);
+                    AddRoadLane(
+                        road,
+                        "right",
+                        lane,
+                        path,
+                        forward: !invertRoadLaneDirection,
+                        invertRoadLaneDirection ? endNode.Uid : startNode.Uid,
+                        invertRoadLaneDirection ? startNode.Uid : endNode.Uid,
+                        invertRoadLaneDirection,
+                        roadMidX,
+                        roadMidZ);
                 }
 
                 for (int lane = 0; lane < leftCount; lane++)
                 {
                     float offset = RoadLaneOffset(road.RoadLook, lane, rightSide: false);
                     var path = OffsetPolyline(center, offset);
-                    Array.Reverse(path);
-                    AddRoadLane(road, "left", lane, path, forward: false, endNode.Uid, startNode.Uid);
+                    if (!invertRoadLaneDirection) Array.Reverse(path);
+                    AddRoadLane(
+                        road,
+                        "left",
+                        lane,
+                        path,
+                        forward: invertRoadLaneDirection,
+                        invertRoadLaneDirection ? startNode.Uid : endNode.Uid,
+                        invertRoadLaneDirection ? endNode.Uid : startNode.Uid,
+                        invertRoadLaneDirection,
+                        roadMidX,
+                        roadMidZ);
                 }
             }
+        }
+
+        private static bool IsTemporaryLeftHandTrafficRoad(float midX, float midZ)
+        {
+            // Temporary ETS2 UK mainland polygon drawn in the viewer.
+            // This keeps the diagnostic direction flip away from Calais and continental Europe.
+            return IsPointInPolygon(midX, midZ, TemporaryLeftHandTrafficPolygon);
+        }
+
+        private static bool IsPointInPolygon(float x, float z, float[][] polygon)
+        {
+            bool inside = false;
+            int count = polygon.Length;
+            for (int i = 0, j = count - 1; i < count; j = i++)
+            {
+                float xi = polygon[i][0];
+                float zi = polygon[i][1];
+                float xj = polygon[j][0];
+                float zj = polygon[j][1];
+
+                bool crossesZ = (zi > z) != (zj > z);
+                if (!crossesZ) continue;
+
+                float intersectionX = (xj - xi) * (z - zi) / (zj - zi) + xi;
+                if (x < intersectionX) inside = !inside;
+            }
+            return inside;
         }
 
         private void AddRoadLane(
@@ -248,7 +541,10 @@ namespace TsMap.Routing
             float[][] path,
             bool forward,
             ulong pathStartRawNodeUid,
-            ulong pathEndRawNodeUid)
+            ulong pathEndRawNodeUid,
+            bool isTemporaryLeftHandTrafficRoad = false,
+            float midX = 0f,
+            float midZ = 0f)
         {
             if (path == null || path.Length < 2) return;
 
@@ -267,6 +563,13 @@ namespace TsMap.Routing
                 Kind = "road",
                 SourceUid = road.Uid.ToString("X"),
                 Lane = lane,
+                Direction = forward ? "start-to-end" : "end-to-start",
+                TrafficSide = isTemporaryLeftHandTrafficRoad ? "temporary-left-hand" : "right-hand",
+                IsTemporaryLeftHandTrafficRoad = isTemporaryLeftHandTrafficRoad,
+                MidX = (float)Math.Round(midX, 4),
+                MidZ = (float)Math.Round(midZ, 4),
+                PathStartRawNodeUid = pathStartRawNodeUid.ToString("X"),
+                PathEndRawNodeUid = pathEndRawNodeUid.ToString("X"),
                 Path = path,
             };
             _edges.Add(edge);
@@ -414,7 +717,7 @@ namespace TsMap.Routing
                 snapped += SnapEndpointGroup(kv.Value, prefabEndpoints, MaxSnapDistance, minDot);
             }
 
-            ApplyPendingRoadSnaps();
+            if (ApplyRoadSnapGeometry) ApplyPendingRoadSnaps();
             var unmatched = MarkUnmatchedEndpoints(endpointGroupKeys, pairedGroupKeys, roadGroups, prefabGroups, MaxSnapDistance, minDot);
             Logger.Instance.Info($"[LaneGraphDebug] Matched {snapped} road lane endpoints to prefab endpoints");
             Logger.Instance.Info($"[LaneGraphDebug] Unmatched endpoints: road={unmatched.Road}, prefab={unmatched.Prefab}, count-mismatch groups={groupsWithMismatch}");
@@ -548,25 +851,36 @@ namespace TsMap.Routing
                 _matchedEndpointIds.Add(best.Id);
                 if (_nodes.TryGetValue(roadEndpoint.Id, out var node))
                 {
-                    node.X = best.X;
-                    node.Z = best.Z;
+                    if (ApplyRoadSnapGeometry)
+                    {
+                        node.X = best.X;
+                        node.Z = best.Z;
+                    }
                     node.RawNodeUid = roadEndpoint.RawNodeUid.ToString("X");
                     node.SnapStatus = match.Distance < 2f ? "matched" : "adjusted";
+                    node.SnapDetail = "road to prefab link";
                 }
                 if (_nodes.TryGetValue(best.Id, out var prefabNode))
                 {
                     prefabNode.RawNodeUid = best.RawNodeUid.ToString("X");
                     prefabNode.SnapStatus = "matched";
+                    prefabNode.SnapDetail = "road to prefab link";
                 }
+
+                string from = roadEndpoint.AtStart ? best.Id : roadEndpoint.Id;
+                string to = roadEndpoint.AtStart ? roadEndpoint.Id : best.Id;
+                float[][] path = roadEndpoint.AtStart
+                    ? new[] { new[] { best.X, best.Z }, new[] { roadEndpoint.X, roadEndpoint.Z } }
+                    : new[] { new[] { roadEndpoint.X, roadEndpoint.Z }, new[] { best.X, best.Z } };
 
                 _edges.Add(new LaneDebugEdge
                 {
-                    From = roadEndpoint.Id,
-                    To = best.Id,
+                    From = from,
+                    To = to,
                     Kind = match.Distance < 2f ? "snap_good" : "snap_adjusted",
                     SourceUid = roadEndpoint.Edge.SourceUid,
                     Lane = roadEndpoint.Edge.Lane + " -> " + best.Edge.Lane + $" ({match.Distance:0.0}m, dot {match.Dot:0.00})",
-                    Path = new[] { new[] { roadEndpoint.X, roadEndpoint.Z }, new[] { best.X, best.Z } },
+                    Path = path,
                 });
                 snapped++;
             }
@@ -1285,6 +1599,13 @@ namespace TsMap.Routing
             public string Kind;
             public string SourceUid;
             public string Lane;
+            public string Direction;
+            public string TrafficSide;
+            public bool IsTemporaryLeftHandTrafficRoad;
+            public float MidX;
+            public float MidZ;
+            public string PathStartRawNodeUid;
+            public string PathEndRawNodeUid;
             public float[][] Path;
         }
 
