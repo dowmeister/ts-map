@@ -6,8 +6,10 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using TsMap;
+using TsMap.Common;
 using TsMap.Routing;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace TsMap.Cli
 {
@@ -255,6 +257,12 @@ namespace TsMap.Cli
 
                         mapper.ExportInfo(outputDir.FullName);
 
+                        Console.Write("  → Poi.json... ");
+                        ExportCitiesCompanies(mapper, Path.Combine(outputDir.FullName, "Poi.json"));
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine("✓");
+                        Console.ResetColor();
+
                         /*
                         Console.Write("  → map_background/ (DDS + map_info.json)... ");
                         new MapBackgroundExporter(mapper).Export(outputDir.FullName);
@@ -317,6 +325,116 @@ namespace TsMap.Cli
                 Console.WriteLine(ex.StackTrace);
                 Console.ResetColor();
             }
+        }
+
+        static void ExportCitiesCompanies(TsMapper mapper, string filePath)
+        {
+            var companyDefByInGameId = mapper.CompanyDefs
+                .Where(d => d.InGameId != null)
+                .GroupBy(d => d.InGameId.Split('.').Last())
+                .ToDictionary(g => g.Key, g => g.First());
+
+            var companiesByCityId = new Dictionary<string, List<JObject>>();
+
+            foreach (var company in mapper.Companies)
+            {
+                if (company.Hidden) continue;
+                if (company.Nodes == null || company.Nodes.Count == 0) continue;
+
+                var node = mapper.GetNodeByUid(company.Nodes[0]);
+                if (node == null) continue;
+
+                var city = mapper.FindCity(node.X, node.Z) ?? mapper.FindNearestCity(node.X, node.Z);
+                if (city == null) continue;
+
+                var cityInGameId = ScsToken.TokenToString(city.Token);
+                companyDefByInGameId.TryGetValue(company.CompanyDefId, out var companyDef);
+
+                if (!companiesByCityId.ContainsKey(cityInGameId))
+                {
+                    companiesByCityId[cityInGameId] = new List<JObject>();
+                }
+
+                companiesByCityId[cityInGameId].Add(new JObject
+                {
+                    ["inGameId"] = company.CompanyDefId,
+                    ["name"] = companyDef?.Name ?? company.CompanyDefId,
+                    ["position"] = new JObject
+                    {
+                        ["x"] = node.X,
+                        ["z"] = node.Z
+                    }
+                });
+            }
+
+            foreach (var cityCompanies in companiesByCityId.Values)
+            {
+                cityCompanies.Sort((a, b) =>
+                    string.Compare((string)a["name"], (string)b["name"], StringComparison.OrdinalIgnoreCase));
+            }
+
+            var cities = new JArray();
+            var countries = new JArray();
+
+            foreach (var country in mapper.Countries.OrderBy(c => c.CountryId))
+            {
+                var countryName = mapper.Localization.GetLocaleValue(country.LocalizationToken, "en_gb")
+                    ?? mapper.Localization.GetLocaleValue(country.LocalizationToken)
+                    ?? country.Name;
+
+                countries.Add(new JObject
+                {
+                    ["id"] = country.CountryId,
+                    ["inGameId"] = ScsToken.TokenToString(country.Token),
+                    ["name"] = countryName,
+                    ["code"] = country.CountryCode,
+                    ["position"] = new JObject
+                    {
+                        ["x"] = country.X,
+                        ["z"] = country.Y
+                    }
+                });
+            }
+
+            foreach (var cityItem in mapper.Cities.OrderBy(c => c.City?.Name))
+            {
+                if (cityItem.Hidden) continue;
+                if (cityItem.City == null) continue;
+
+                var node = mapper.GetNodeByUid(cityItem.NodeUid);
+                if (node == null) continue;
+
+                var city = cityItem.City;
+                var cityInGameId = ScsToken.TokenToString(city.Token);
+                var country = mapper.GetCountryByTokenName(city.Country);
+                var englishName = mapper.Localization.GetLocaleValue(city.LocalizationToken, "en_gb")
+                    ?? mapper.Localization.GetLocaleValue(city.LocalizationToken)
+                    ?? city.Name;
+
+                companiesByCityId.TryGetValue(cityInGameId, out var cityCompanies);
+
+                cities.Add(new JObject
+                {
+                    ["inGameId"] = cityInGameId,
+                    ["name"] = englishName,
+                    ["population"] = city.Population.HasValue ? new JValue(city.Population.Value) : JValue.CreateNull(),
+                    ["position"] = new JObject
+                    {
+                        ["x"] = node.X,
+                        ["z"] = node.Z
+                    },
+                    ["countryId"] = country == null ? JValue.CreateNull() : new JValue(country.CountryId),
+                    ["companies"] = cityCompanies == null ? new JArray() : new JArray(cityCompanies)
+                });
+            }
+
+            var root = new JObject
+            {
+                ["countries"] = countries,
+                ["cities"] = cities
+            };
+
+            File.WriteAllText(filePath, root.ToString(Formatting.Indented));
         }
 
         static List<Mod> LoadMods(DirectoryInfo modsDir, FileInfo modsList)

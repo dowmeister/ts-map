@@ -124,6 +124,8 @@ sync_json_files() {
         --transfers 4 \
         --checkers 8 \
         --s3-upload-concurrency 2 \
+        --filter "- geojson/**" \
+        --filter "- routing/**" \
         --filter "+ *.json" \
         --filter "- *" \
         "$game_dir/" \

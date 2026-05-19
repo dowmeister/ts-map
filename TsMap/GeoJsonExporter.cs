@@ -833,6 +833,20 @@ namespace TsMap
                         }
                     }
 
+                    var fromCity = _mapper.FindNearestCity(conn.StartPortLocation.X, conn.StartPortLocation.Y);
+                    var toCity = _mapper.FindNearestCity(conn.EndPortLocation.X, conn.EndPortLocation.Y);
+
+                    if (fromCity != null && toCity != null && fromCity.Token == toCity.Token)
+                    {
+                        toCity = _mapper.FindNearestCityExcept(conn.EndPortLocation.X, conn.EndPortLocation.Y, fromCity.Token);
+                    }
+
+                    var fromCityName = _mapper.GetEnglishCityName(fromCity);
+                    var toCityName = _mapper.GetEnglishCityName(toCity);
+                    var label = !string.IsNullOrWhiteSpace(fromCityName) && !string.IsNullOrWhiteSpace(toCityName)
+                        ? $"{fromCityName}, {toCityName}"
+                        : ScsToken.TokenToString(conn.StartPortToken) + " -> " + ScsToken.TokenToString(conn.EndPortToken);
+
                     features.Add(new JObject
                     {
                         ["type"] = "Feature",
@@ -844,6 +858,9 @@ namespace TsMap
                         ["properties"] = new JObject
                         {
                             ["ferry"] = true,
+                            ["from_city"] = fromCityName,
+                            ["to_city"] = toCityName,
+                            ["label"] = label,
                             ["dlc_guard"] = ferryConnection.DlcGuard
                         }
                     });

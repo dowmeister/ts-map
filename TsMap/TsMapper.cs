@@ -800,6 +800,49 @@ namespace TsMap
             return null;
         }
 
+        public TsCity FindNearestCity(float x, float z)
+        {
+            return FindNearestCityExcept(x, z, 0);
+        }
+
+        public TsCity FindNearestCityExcept(float x, float z, ulong excludedCityToken)
+        {
+            TsCity nearestCity = null;
+            double nearestDistance = double.MaxValue;
+
+            foreach (var cityItem in Cities)
+            {
+                if (cityItem.Hidden || cityItem.City == null) continue;
+                if (excludedCityToken != 0 && cityItem.City.Token == excludedCityToken) continue;
+
+                var node = GetNodeByUid(cityItem.NodeUid);
+                var cityX = node?.X ?? cityItem.X;
+                var cityZ = node?.Z ?? cityItem.Z;
+                var dx = cityX - x;
+                var dz = cityZ - z;
+                var distance = (double)dx * dx + (double)dz * dz;
+
+                if (distance >= nearestDistance) continue;
+
+                nearestDistance = distance;
+                nearestCity = cityItem.City;
+            }
+
+            return nearestCity;
+        }
+
+        public string GetEnglishCityName(TsCity city)
+        {
+            if (city == null) return null;
+
+            return Localization?.GetLocaleValue(city.LocalizationToken, "en_gb") ?? city.Name;
+        }
+
+        public string GetNearestCityName(float x, float z)
+        {
+            return GetEnglishCityName(FindNearestCity(x, z));
+        }
+
         public string FindCityInGameId(float x, float z)
         {
             var city = FindCity(x, z);
