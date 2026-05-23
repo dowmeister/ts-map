@@ -15,7 +15,7 @@ namespace TsMap.Routing
         private static readonly bool IncludeRoadToPrefabLinks = true;
         private static readonly bool IncludePrefabToPrefabLinks = true;
         private static readonly bool ApplyRoadSnapGeometry = false;
-        private static readonly bool ApplyPrefabSnapGeometry = false;
+        private static readonly bool ApplyPrefabSnapGeometry = true;
         private static readonly float[][] TemporaryLeftHandTrafficPolygon =
         {
             new[] { -62030.5f, -6615.0f },
@@ -59,6 +59,7 @@ namespace TsMap.Routing
         private readonly HashSet<string> _matchedEndpointIds = new HashSet<string>();
         private readonly Dictionary<LaneDebugEdge, EdgeSnapTargets> _pendingRoadSnaps = new Dictionary<LaneDebugEdge, EdgeSnapTargets>();
         private readonly Dictionary<LaneDebugEdge, EdgeSnapTargets> _pendingPrefabSnaps = new Dictionary<LaneDebugEdge, EdgeSnapTargets>();
+        private readonly Dictionary<string, List<LaneEndpoint>> _prefabEndpointsByStablePortKey = new Dictionary<string, List<LaneEndpoint>>();
         public LaneGraphDebugExporter(TsMapper mapper)
         {
             _mapper = mapper;
@@ -72,6 +73,7 @@ namespace TsMap.Routing
             _matchedEndpointIds.Clear();
             _pendingRoadSnaps.Clear();
             _pendingPrefabSnaps.Clear();
+            _prefabEndpointsByStablePortKey.Clear();
 
             if (IncludeRoads) ProcessRoads();
             ProcessPrefabs();
@@ -162,6 +164,7 @@ namespace TsMap.Routing
             _matchedEndpointIds.Clear();
             _pendingRoadSnaps.Clear();
             _pendingPrefabSnaps.Clear();
+            _prefabEndpointsByStablePortKey.Clear();
 
             if (IncludeRoads) ProcessRoads();
             ProcessPrefabs();
@@ -343,6 +346,7 @@ namespace TsMap.Routing
                 _matchedEndpointIds.Clear();
                 _pendingRoadSnaps.Clear();
                 _pendingPrefabSnaps.Clear();
+                _prefabEndpointsByStablePortKey.Clear();
                 if (IncludeRoads) ProcessRoads();
                 ProcessPrefabs();
                 if (IncludeRoadToPrefabLinks) SnapRoadEndpointsToPrefabs();
@@ -639,15 +643,15 @@ namespace TsMap.Routing
                                 Path = path,
                             };
                             _edges.Add(edge);
-                            AddEndpoint(edge, atStart: true, fromRawUid);
-                            AddEndpoint(edge, atStart: false, toRawUid);
+                            AddEndpoint(edge, atStart: true, fromRawUid, startId);
+                            AddEndpoint(edge, atStart: false, toRawUid, endId);
                         }
                     }
                 }
             }
         }
 
-        private void AddEndpoint(LaneDebugEdge edge, bool atStart, ulong rawNodeUid)
+        private void AddEndpoint(LaneDebugEdge edge, bool atStart, ulong rawNodeUid, string stablePortKey = null)
         {
             if (edge.Path == null || edge.Path.Length < 2) return;
             int idx = atStart ? 0 : edge.Path.Length - 1;
@@ -662,7 +666,7 @@ namespace TsMap.Routing
             {
                 node.RawNodeUid = rawNodeUid.ToString("X");
             }
-            _endpoints.Add(new LaneEndpoint
+            var endpoint = new LaneEndpoint
             {
                 Edge = edge,
                 AtStart = atStart,
@@ -672,7 +676,19 @@ namespace TsMap.Routing
                 DirX = dirX / len,
                 DirZ = dirZ / len,
                 RawNodeUid = rawNodeUid,
-            });
+                StablePortKey = stablePortKey,
+            };
+            _endpoints.Add(endpoint);
+
+            if (edge.Kind == "prefab" && !string.IsNullOrEmpty(stablePortKey))
+            {
+                if (!_prefabEndpointsByStablePortKey.TryGetValue(stablePortKey, out var list))
+                {
+                    list = new List<LaneEndpoint>();
+                    _prefabEndpointsByStablePortKey[stablePortKey] = list;
+                }
+                list.Add(endpoint);
+            }
         }
 
         private void SnapRoadEndpointsToPrefabs()
@@ -955,6 +971,26 @@ namespace TsMap.Routing
         }
 
         private void QueuePrefabEndpointSnap(LaneEndpoint endpoint, float targetX, float targetZ)
+        {
+            if (string.IsNullOrEmpty(endpoint.StablePortKey))
+            {
+                QueuePrefabEdgeEndpointSnap(endpoint, targetX, targetZ);
+                return;
+            }
+
+            if (!_prefabEndpointsByStablePortKey.TryGetValue(endpoint.StablePortKey, out var candidates))
+            {
+                QueuePrefabEdgeEndpointSnap(endpoint, targetX, targetZ);
+                return;
+            }
+
+            foreach (var candidate in candidates)
+            {
+                QueuePrefabEdgeEndpointSnap(candidate, targetX, targetZ);
+            }
+        }
+
+        private void QueuePrefabEdgeEndpointSnap(LaneEndpoint endpoint, float targetX, float targetZ)
         {
             if (!_pendingPrefabSnaps.TryGetValue(endpoint.Edge, out var targets))
             {
@@ -1734,6 +1770,7 @@ namespace TsMap.Routing
             public float DirX;
             public float DirZ;
             public ulong RawNodeUid;
+            public string StablePortKey;
         }
 
         private class EndpointMatch
