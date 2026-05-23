@@ -15,6 +15,7 @@ namespace TsMap.Routing
         private static readonly bool IncludeRoadToPrefabLinks = true;
         private static readonly bool IncludePrefabToPrefabLinks = true;
         private static readonly bool ApplyRoadSnapGeometry = false;
+        private static readonly bool ApplyPrefabSnapGeometry = false;
         private static readonly float[][] TemporaryLeftHandTrafficPolygon =
         {
             new[] { -62030.5f, -6615.0f },
@@ -57,6 +58,7 @@ namespace TsMap.Routing
         private readonly List<LaneEndpoint> _endpoints = new List<LaneEndpoint>();
         private readonly HashSet<string> _matchedEndpointIds = new HashSet<string>();
         private readonly Dictionary<LaneDebugEdge, EdgeSnapTargets> _pendingRoadSnaps = new Dictionary<LaneDebugEdge, EdgeSnapTargets>();
+        private readonly Dictionary<LaneDebugEdge, EdgeSnapTargets> _pendingPrefabSnaps = new Dictionary<LaneDebugEdge, EdgeSnapTargets>();
         public LaneGraphDebugExporter(TsMapper mapper)
         {
             _mapper = mapper;
@@ -69,6 +71,7 @@ namespace TsMap.Routing
             _endpoints.Clear();
             _matchedEndpointIds.Clear();
             _pendingRoadSnaps.Clear();
+            _pendingPrefabSnaps.Clear();
 
             if (IncludeRoads) ProcessRoads();
             ProcessPrefabs();
@@ -158,6 +161,7 @@ namespace TsMap.Routing
             _endpoints.Clear();
             _matchedEndpointIds.Clear();
             _pendingRoadSnaps.Clear();
+            _pendingPrefabSnaps.Clear();
 
             if (IncludeRoads) ProcessRoads();
             ProcessPrefabs();
@@ -338,6 +342,7 @@ namespace TsMap.Routing
                 _endpoints.Clear();
                 _matchedEndpointIds.Clear();
                 _pendingRoadSnaps.Clear();
+                _pendingPrefabSnaps.Clear();
                 if (IncludeRoads) ProcessRoads();
                 ProcessPrefabs();
                 if (IncludeRoadToPrefabLinks) SnapRoadEndpointsToPrefabs();
@@ -718,6 +723,7 @@ namespace TsMap.Routing
             }
 
             if (ApplyRoadSnapGeometry) ApplyPendingRoadSnaps();
+            if (ApplyPrefabSnapGeometry) ApplyPendingPrefabSnaps();
             var unmatched = MarkUnmatchedEndpoints(endpointGroupKeys, pairedGroupKeys, roadGroups, prefabGroups, MaxSnapDistance, minDot);
             Logger.Instance.Info($"[LaneGraphDebug] Matched {snapped} road lane endpoints to prefab endpoints");
             Logger.Instance.Info($"[LaneGraphDebug] Unmatched endpoints: road={unmatched.Road}, prefab={unmatched.Prefab}, count-mismatch groups={groupsWithMismatch}");
@@ -846,7 +852,13 @@ namespace TsMap.Routing
                 var roadEndpoint = match.Road;
                 var best = match.Prefab;
 
-                QueueRoadEndpointSnap(roadEndpoint, best.X, best.Z);
+                if (ApplyRoadSnapGeometry) QueueRoadEndpointSnap(roadEndpoint, best.X, best.Z);
+                if (ApplyPrefabSnapGeometry) QueuePrefabEndpointSnap(best, roadEndpoint.X, roadEndpoint.Z);
+                if (ApplyPrefabSnapGeometry)
+                {
+                    best.X = roadEndpoint.X;
+                    best.Z = roadEndpoint.Z;
+                }
                 _matchedEndpointIds.Add(roadEndpoint.Id);
                 _matchedEndpointIds.Add(best.Id);
                 if (_nodes.TryGetValue(roadEndpoint.Id, out var node))
@@ -862,16 +874,23 @@ namespace TsMap.Routing
                 }
                 if (_nodes.TryGetValue(best.Id, out var prefabNode))
                 {
+                    if (ApplyPrefabSnapGeometry)
+                    {
+                        prefabNode.X = roadEndpoint.X;
+                        prefabNode.Z = roadEndpoint.Z;
+                    }
                     prefabNode.RawNodeUid = best.RawNodeUid.ToString("X");
                     prefabNode.SnapStatus = "matched";
-                    prefabNode.SnapDetail = "road to prefab link";
+                    prefabNode.SnapDetail = ApplyPrefabSnapGeometry ? "prefab snapped to road" : "road to prefab link";
                 }
 
                 string from = roadEndpoint.AtStart ? best.Id : roadEndpoint.Id;
                 string to = roadEndpoint.AtStart ? roadEndpoint.Id : best.Id;
+                float prefabX = ApplyPrefabSnapGeometry ? roadEndpoint.X : best.X;
+                float prefabZ = ApplyPrefabSnapGeometry ? roadEndpoint.Z : best.Z;
                 float[][] path = roadEndpoint.AtStart
-                    ? new[] { new[] { best.X, best.Z }, new[] { roadEndpoint.X, roadEndpoint.Z } }
-                    : new[] { new[] { roadEndpoint.X, roadEndpoint.Z }, new[] { best.X, best.Z } };
+                    ? new[] { new[] { prefabX, prefabZ }, new[] { roadEndpoint.X, roadEndpoint.Z } }
+                    : new[] { new[] { roadEndpoint.X, roadEndpoint.Z }, new[] { prefabX, prefabZ } };
 
                 _edges.Add(new LaneDebugEdge
                 {
@@ -935,6 +954,28 @@ namespace TsMap.Routing
             }
         }
 
+        private void QueuePrefabEndpointSnap(LaneEndpoint endpoint, float targetX, float targetZ)
+        {
+            if (!_pendingPrefabSnaps.TryGetValue(endpoint.Edge, out var targets))
+            {
+                targets = new EdgeSnapTargets();
+                _pendingPrefabSnaps[endpoint.Edge] = targets;
+            }
+
+            if (endpoint.AtStart)
+            {
+                targets.HasStart = true;
+                targets.StartX = targetX;
+                targets.StartZ = targetZ;
+            }
+            else
+            {
+                targets.HasEnd = true;
+                targets.EndX = targetX;
+                targets.EndZ = targetZ;
+            }
+        }
+
         private void ApplyPendingRoadSnaps()
         {
             foreach (var kv in _pendingRoadSnaps)
@@ -964,6 +1005,73 @@ namespace TsMap.Routing
                     float dz = startDz * (1f - t) + endDz * t;
                     path[i][0] += dx;
                     path[i][1] += dz;
+                }
+            }
+        }
+
+        private void ApplyPendingPrefabSnaps()
+        {
+            const float InfluenceDistance = 18f;
+
+            foreach (var kv in _pendingPrefabSnaps)
+            {
+                var edge = kv.Key;
+                var targets = kv.Value;
+                if (edge.Path == null || edge.Path.Length == 0) continue;
+
+                var path = edge.Path;
+                int n = path.Length;
+                float[] distanceFromStart = new float[n];
+                for (int i = 1; i < n; i++)
+                {
+                    float dx = path[i][0] - path[i - 1][0];
+                    float dz = path[i][1] - path[i - 1][1];
+                    distanceFromStart[i] = distanceFromStart[i - 1] + (float)Math.Sqrt(dx * dx + dz * dz);
+                }
+
+                float totalLength = distanceFromStart[n - 1];
+                float startDx = 0f, startDz = 0f, endDx = 0f, endDz = 0f;
+                if (targets.HasStart)
+                {
+                    startDx = targets.StartX - path[0][0];
+                    startDz = targets.StartZ - path[0][1];
+                }
+                if (targets.HasEnd)
+                {
+                    endDx = targets.EndX - path[n - 1][0];
+                    endDz = targets.EndZ - path[n - 1][1];
+                }
+
+                for (int i = 0; i < n; i++)
+                {
+                    if (i == 0 && targets.HasStart)
+                    {
+                        path[i][0] = targets.StartX;
+                        path[i][1] = targets.StartZ;
+                        continue;
+                    }
+                    if (i == n - 1 && targets.HasEnd)
+                    {
+                        path[i][0] = targets.EndX;
+                        path[i][1] = targets.EndZ;
+                        continue;
+                    }
+
+                    float startWeight = targets.HasStart
+                        ? Clamp01(1f - distanceFromStart[i] / InfluenceDistance)
+                        : 0f;
+                    float endWeight = targets.HasEnd
+                        ? Clamp01(1f - (totalLength - distanceFromStart[i]) / InfluenceDistance)
+                        : 0f;
+                    float weightSum = startWeight + endWeight;
+                    if (weightSum > 1f)
+                    {
+                        startWeight /= weightSum;
+                        endWeight /= weightSum;
+                    }
+
+                    path[i][0] += startDx * startWeight + endDx * endWeight;
+                    path[i][1] += startDz * startWeight + endDz * endWeight;
                 }
             }
         }
@@ -1048,6 +1156,13 @@ namespace TsMap.Routing
         {
             if (candidate.Count != current.Count) return candidate.Count > current.Count;
             return candidate.Cost < current.Cost;
+        }
+
+        private static float Clamp01(float value)
+        {
+            if (value <= 0f) return 0f;
+            if (value >= 1f) return 1f;
+            return value;
         }
 
         private static float MatchCost(List<EndpointMatch> matches)
