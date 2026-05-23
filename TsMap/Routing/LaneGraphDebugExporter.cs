@@ -729,18 +729,21 @@ namespace TsMap.Routing
 
             int snapped = 0;
             int groupsWithMismatch = 0;
+            var matchedCountByGroupKey = new Dictionary<string, int>();
             var pairedGroupKeys = new HashSet<string>();
             foreach (var kv in roadGroups)
             {
                 if (!prefabGroups.TryGetValue(kv.Key, out var prefabEndpoints)) continue;
                 pairedGroupKeys.Add(kv.Key);
                 if (CountUniqueEndpointIds(kv.Value) != CountUniqueEndpointIds(prefabEndpoints)) groupsWithMismatch++;
-                snapped += SnapEndpointGroup(kv.Value, prefabEndpoints, MaxSnapDistance, minDot);
+                int groupSnapped = SnapEndpointGroup(kv.Value, prefabEndpoints, MaxSnapDistance, minDot);
+                matchedCountByGroupKey[kv.Key] = groupSnapped;
+                snapped += groupSnapped;
             }
 
             if (ApplyRoadSnapGeometry) ApplyPendingRoadSnaps();
             if (ApplyPrefabSnapGeometry) ApplyPendingPrefabSnaps();
-            var unmatched = MarkUnmatchedEndpoints(endpointGroupKeys, pairedGroupKeys, roadGroups, prefabGroups, MaxSnapDistance, minDot);
+            var unmatched = MarkUnmatchedEndpoints(endpointGroupKeys, pairedGroupKeys, matchedCountByGroupKey, roadGroups, prefabGroups, MaxSnapDistance, minDot);
             Logger.Instance.Info($"[LaneGraphDebug] Matched {snapped} road lane endpoints to prefab endpoints");
             Logger.Instance.Info($"[LaneGraphDebug] Unmatched endpoints: road={unmatched.Road}, prefab={unmatched.Prefab}, count-mismatch groups={groupsWithMismatch}");
         }
@@ -1289,6 +1292,7 @@ namespace TsMap.Routing
         private (int Road, int Prefab) MarkUnmatchedEndpoints(
             Dictionary<string, string> endpointGroupKeys,
             HashSet<string> pairedGroupKeys,
+            Dictionary<string, int> matchedCountByGroupKey,
             Dictionary<string, List<LaneEndpoint>> roadGroups,
             Dictionary<string, List<LaneEndpoint>> prefabGroups,
             float maxSnapDistance,
@@ -1306,6 +1310,7 @@ namespace TsMap.Routing
                 node.RawNodeUid = endpoint.RawNodeUid.ToString("X");
                 node.SnapStatus = "unmatched";
                 node.SnapDetail = DescribeUnmatchedEndpoint(endpoint, groupKey, roadGroups, prefabGroups, maxSnapDistance, minDot);
+                int matchedInGroup = matchedCountByGroupKey.TryGetValue(groupKey, out var count) ? count : 0;
                 if (endpoint.Edge.Kind == "road")
                 {
                     node.Kind = "road_unmatched";
@@ -1313,8 +1318,17 @@ namespace TsMap.Routing
                 }
                 else if (endpoint.Edge.Kind == "prefab")
                 {
-                    node.Kind = "prefab_extra";
-                    prefab++;
+                    if (matchedInGroup > 0)
+                    {
+                        node.Kind = "prefab_extra_soft";
+                        node.SnapStatus = "extra";
+                        node.SnapDetail = "extra prefab lane in partially matched group; " + node.SnapDetail;
+                    }
+                    else
+                    {
+                        node.Kind = "prefab_extra";
+                        prefab++;
+                    }
                 }
             }
             return (road, prefab);
