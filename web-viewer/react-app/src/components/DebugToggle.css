@@ -38,3 +38,16 @@
 .debug-toggle__label:hover .debug-toggle__text {
   color: #fff;
 }
+
+.debug-toggle__label--sub {
+  padding-left: 16px;
+}
+
+.debug-toggle__label input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.debug-toggle__label input:disabled + .debug-toggle__text {
+  color: #555;
+}

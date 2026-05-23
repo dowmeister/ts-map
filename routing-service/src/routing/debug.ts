@@ -404,6 +404,7 @@ export function laneGraphDebugHandler(req: Request, res: Response): void {
 export function laneGraphIssuesHandler(req: Request, res: Response): void {
   const t0 = Date.now();
   const game = (req.query['game'] as string) || 'ets2';
+  const includeSoft = req.query['soft'] === 'true' || req.query['includeSoft'] === 'true';
   const state = getGraphState(game);
   if (!state) {
     res.status(503).json({ error: `Routing engine not ready for game '${game}'` });
@@ -416,18 +417,27 @@ export function laneGraphIssuesHandler(req: Request, res: Response): void {
     return;
   }
 
-  const issueKinds = new Set(['road_unmatched', 'prefab_extra']);
+  const blockingIssueKinds = new Set(['road_unmatched', 'prefab_extra']);
+  const softIssueKinds = new Set(['prefab_extra_soft', 'prefab_terminal']);
   const bounds = state.graph.bounds;
   const features: object[] = [];
+  let blocking = 0;
+  let soft = 0;
 
   for (const node of data.nodes) {
-    if (!issueKinds.has(node.kind)) continue;
+    const isBlocking = blockingIssueKinds.has(node.kind);
+    const isSoft = softIssueKinds.has(node.kind);
+    if (!isBlocking && (!includeSoft || !isSoft)) continue;
+    if (isBlocking) blocking++;
+    else soft++;
+
     const [lon, lat] = ets2ToWgs84(node.x, node.z, bounds);
     features.push({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [lon, lat] },
       properties: {
         featureType: 'issue',
+        issueSeverity: isBlocking ? 'blocking' : 'soft',
         id: node.id,
         x: node.x,
         z: node.z,
@@ -443,6 +453,6 @@ export function laneGraphIssuesHandler(req: Request, res: Response): void {
     });
   }
 
-  logDebug(`[LaneIssues:${game}] issues=${features.length} ${Date.now() - t0}ms`);
+  logDebug(`[LaneIssues:${game}] issues=${features.length} blocking=${blocking} soft=${soft} includeSoft=${includeSoft} ${Date.now() - t0}ms`);
   res.json({ type: 'FeatureCollection', features });
 }

@@ -22,17 +22,19 @@ function createArrowImageData(size = 12) {
   return ctx.getImageData(0, 0, size, size)
 }
 
-export function useDebugOverlay(mapInstance, tileMapInfo, graphEnabled, issuesEnabled) {
+export function useDebugOverlay(mapInstance, tileMapInfo, graphEnabled, issuesEnabled, softIssuesEnabled = false) {
   const arrowLoadedRef  = useRef(false)
   const fetchTimerRef   = useRef(null)
   const graphEnabledRef = useRef(graphEnabled)
   const issuesEnabledRef = useRef(issuesEnabled)
+  const softIssuesEnabledRef = useRef(softIssuesEnabled)
   const popupRef        = useRef(null)
   const issuesLoadedRef = useRef(false)
 
   useEffect(() => { graphEnabledRef.current = graphEnabled }, [graphEnabled])
   useEffect(() => { issuesEnabledRef.current = issuesEnabled }, [issuesEnabled])
-  useEffect(() => { issuesLoadedRef.current = false }, [tileMapInfo?.game])
+  useEffect(() => { softIssuesEnabledRef.current = softIssuesEnabled }, [softIssuesEnabled])
+  useEffect(() => { issuesLoadedRef.current = false }, [tileMapInfo?.game, softIssuesEnabled])
 
   // Load arrow icon once when map is available
   useEffect(() => {
@@ -106,7 +108,7 @@ export function useDebugOverlay(mapInstance, tileMapInfo, graphEnabled, issuesEn
     if (!issuesSource) return
 
     const game = tileMapInfo?.game || 'ets2'
-    const issuesUrl = `${ROUTING_BASE}/api/lane-graph/issues?game=${game}`
+    const issuesUrl = `${ROUTING_BASE}/api/lane-graph/issues?game=${game}&soft=${softIssuesEnabledRef.current ? 'true' : 'false'}`
     try {
       const issuesRes = await fetch(issuesUrl)
       if (issuesRes.ok) {
@@ -167,6 +169,13 @@ export function useDebugOverlay(mapInstance, tileMapInfo, graphEnabled, issuesEn
   // Attach / detach global issue markers based on issues toggle
   useEffect(() => {
     if (!mapInstance) return
+    issuesLoadedRef.current = false
+    if (issuesEnabled) fetchIssuesData()
+  }, [softIssuesEnabled, issuesEnabled, mapInstance, fetchIssuesData])
+
+  // Attach / detach global issue markers based on issues toggle
+  useEffect(() => {
+    if (!mapInstance) return
 
     if (issuesEnabled) {
       fetchIssuesData()
@@ -216,6 +225,7 @@ export function useDebugOverlay(mapInstance, tileMapInfo, graphEnabled, issuesEn
       .setHTML(`<strong>Lane node</strong><br/>
         id: <code>${p.id}</code><br/>
         kind: <b>${p.kind}</b><br/>
+        severity: <code>${p.issueSeverity || ''}</code><br/>
         lane: <code>${p.lane || ''}</code><br/>
         snap: <code>${p.snapStatus || ''}</code><br/>
         detail: <code>${p.snapDetail || ''}</code><br/>

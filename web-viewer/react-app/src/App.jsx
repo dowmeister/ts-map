@@ -46,11 +46,12 @@ function App() {
   const [bounds, setBounds] = useState(null)
   const [debugEnabled, setDebugEnabled] = useState(false)
   const [debugIssuesEnabled, setDebugIssuesEnabled] = useState(false)
+  const [debugSoftIssuesEnabled, setDebugSoftIssuesEnabled] = useState(false)
 
   const tileMapInfo = useTileMapInfo(currentGame)
   const cities = useCities(currentGame)
 
-  useDebugOverlay(mapInstance, tileMapInfo, debugEnabled, debugIssuesEnabled)
+  useDebugOverlay(mapInstance, tileMapInfo, debugEnabled, debugIssuesEnabled, debugSoftIssuesEnabled)
 
   // Sync game to path, clear hash so position resets
   const handleGameChange = useCallback((newGame) => {
@@ -96,8 +97,10 @@ function App() {
       <DebugToggle
         graphEnabled={debugEnabled}
         issuesEnabled={debugIssuesEnabled}
+        softIssuesEnabled={debugSoftIssuesEnabled}
         onGraphToggle={setDebugEnabled}
         onIssuesToggle={setDebugIssuesEnabled}
+        onSoftIssuesToggle={setDebugSoftIssuesEnabled}
       />
       <PolygonTool
         mapInstance={mapInstance}
