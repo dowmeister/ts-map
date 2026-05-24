@@ -151,7 +151,7 @@ namespace TsMap.Cli
 
                 var geoJsonPath = Path.Combine(outputDir.FullName, "geojson");
                 var routingPath = Path.Combine(outputDir.FullName, "routing");
-                RoutingGraph capturedGraph = null;
+                LaneRoutingGraph capturedGraph = null;
 
                 // Export GeoJSON (tiles)
                 if (format == ExportFormat.GeoJson || format == ExportFormat.All)
@@ -299,8 +299,7 @@ namespace TsMap.Cli
                     if (validateRoutingGraph && capturedGraph != null)
                     {
                         Console.WriteLine();
-                        Console.WriteLine("Running routing graph validation...");
-                        new GraphValidator(mapper, capturedGraph).Validate(routingPath);
+                        Console.WriteLine("Routing graph validation is legacy-only and is skipped for lane routing graphs.");
                     }
 
                     Console.WriteLine();

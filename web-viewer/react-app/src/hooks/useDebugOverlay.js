@@ -89,13 +89,19 @@ export function useDebugOverlay(mapInstance, tileMapInfo, graphEnabled, issuesEn
     const minZ = Math.min(swZ, neZ), maxZ = Math.max(swZ, neZ)
 
     const game = tileMapInfo?.game || 'ets2'
-    const laneUrl = `${ROUTING_BASE}/api/lane-graph/debug?game=${game}&minX=${minX}&maxX=${maxX}&minZ=${minZ}&maxZ=${maxZ}`
+    const laneUrl = `${ROUTING_BASE}/api/lane-graph/debug?game=${game}&minX=${minX}&maxX=${maxX}&minZ=${minZ}&maxZ=${maxZ}&arrows=false`
+    const syntheticUrl = `${ROUTING_BASE}/api/graph/debug?game=${game}&minX=${minX}&maxX=${maxX}&minZ=${minZ}&maxZ=${maxZ}&synthetic=true`
 
     try {
-      const laneRes = await fetch(laneUrl)
+      const [laneRes, syntheticRes] = await Promise.all([fetch(laneUrl), fetch(syntheticUrl)])
       if (laneRes.ok) {
         const laneGeojson = await laneRes.json()
-        laneSource.setData(withLaneArrows(laneGeojson))
+        let features = laneGeojson.features || []
+        if (syntheticRes.ok) {
+          const syntheticGeojson = await syntheticRes.json()
+          features = [...features, ...asLaneDebugFeatures(syntheticGeojson)]
+        }
+        laneSource.setData(withLaneArrows({ ...laneGeojson, features }))
       }
     } catch {
       // Network errors: silently ignore (dev server may be stopped)
@@ -243,6 +249,20 @@ export function useDebugOverlay(mapInstance, tileMapInfo, graphEnabled, issuesEn
 function showMessage(map, text) {
   // Brief toast-style console log — full UI toast can be added later
   console.info('[DebugOverlay]', text)
+}
+
+function asLaneDebugFeatures(geojson) {
+  if (!geojson?.features) return []
+  return geojson.features
+    .filter(f => f?.properties?.featureType === 'edge')
+    .map(f => ({
+      ...f,
+      properties: {
+        ...f.properties,
+        kind: f.properties.itemType || f.properties.kind,
+        lane: f.properties.itemType || f.properties.lane || '',
+      },
+    }))
 }
 
 function withLaneArrows(geojson) {

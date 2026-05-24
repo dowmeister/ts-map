@@ -65,7 +65,45 @@ namespace TsMap.Routing
             _mapper = mapper;
         }
 
-        public void Export(string filePath)
+        public LaneGraphSnapshot BuildSnapshot()
+        {
+            BuildDebugGraph();
+            var snapshot = new LaneGraphSnapshot();
+            foreach (var node in _nodes.Values)
+            {
+                snapshot.Nodes.Add(new SnapshotNode
+                {
+                    Id = node.Id,
+                    X = node.X,
+                    Z = node.Z,
+                    Kind = node.Kind,
+                    SourceUid = node.SourceUid,
+                    Lane = node.Lane,
+                    RawNodeUid = node.RawNodeUid,
+                    SnapStatus = node.SnapStatus,
+                    SnapDetail = node.SnapDetail,
+                    InDegree = node.InDegree,
+                    OutDegree = node.OutDegree,
+                });
+            }
+
+            foreach (var edge in _edges)
+            {
+                snapshot.Edges.Add(new SnapshotEdge
+                {
+                    From = edge.From,
+                    To = edge.To,
+                    Kind = edge.Kind,
+                    SourceUid = edge.SourceUid,
+                    Lane = edge.Lane,
+                    SpeedClass = edge.SpeedClass,
+                    Path = CopyPath(edge.Path),
+                });
+            }
+            return snapshot;
+        }
+
+        private void BuildDebugGraph()
         {
             _nodes.Clear();
             _edges.Clear();
@@ -74,12 +112,17 @@ namespace TsMap.Routing
             _pendingRoadSnaps.Clear();
             _pendingPrefabSnaps.Clear();
             _prefabEndpointsByStablePortKey.Clear();
-
             if (IncludeRoads) ProcessRoads();
             ProcessPrefabs();
             if (IncludeRoadToPrefabLinks) SnapRoadEndpointsToPrefabs();
+            SnapRoadEndpointsToRoads();
             if (IncludePrefabToPrefabLinks) SnapPrefabEndpointsToPrefabs();
             ComputeNodeDegrees();
+        }
+
+        public void Export(string filePath)
+        {
+            BuildDebugGraph();
 
             Logger.Instance.Info($"[LaneGraphDebug] Writing {filePath} ...");
             using (var fs = new FileStream(filePath, FileMode.Create, FileAccess.Write))
@@ -99,7 +142,9 @@ namespace TsMap.Routing
 
                 jw.WritePropertyName("nodes");
                 jw.WriteStartArray();
-                foreach (var node in _nodes.Values)
+                var sortedNodes = new List<LaneDebugNode>(_nodes.Values);
+                sortedNodes.Sort((a, b) => SpatialSortKey(a.X, a.Z).CompareTo(SpatialSortKey(b.X, b.Z)));
+                foreach (var node in sortedNodes)
                 {
                     jw.WriteStartObject();
                     jw.WritePropertyName("id"); jw.WriteValue(node.Id);
@@ -119,7 +164,9 @@ namespace TsMap.Routing
 
                 jw.WritePropertyName("edges");
                 jw.WriteStartArray();
-                foreach (var edge in _edges)
+                var sortedEdges = new List<LaneDebugEdge>(_edges);
+                sortedEdges.Sort((a, b) => SpatialSortKey(a).CompareTo(SpatialSortKey(b)));
+                foreach (var edge in sortedEdges)
                 {
                     jw.WriteStartObject();
                     jw.WritePropertyName("from"); jw.WriteValue(edge.From);
@@ -127,6 +174,7 @@ namespace TsMap.Routing
                     jw.WritePropertyName("kind"); jw.WriteValue(edge.Kind);
                     jw.WritePropertyName("sourceUid"); jw.WriteValue(edge.SourceUid);
                     jw.WritePropertyName("lane"); jw.WriteValue(edge.Lane);
+                    jw.WritePropertyName("speedClass"); jw.WriteValue(edge.SpeedClass);
                     jw.WritePropertyName("direction"); jw.WriteValue(edge.Direction);
                     jw.WritePropertyName("trafficSide"); jw.WriteValue(edge.TrafficSide);
                     jw.WritePropertyName("isTemporaryLeftHandTrafficRoad"); jw.WriteValue(edge.IsTemporaryLeftHandTrafficRoad);
@@ -169,6 +217,7 @@ namespace TsMap.Routing
             if (IncludeRoads) ProcessRoads();
             ProcessPrefabs();
             if (IncludeRoadToPrefabLinks) SnapRoadEndpointsToPrefabs();
+            SnapRoadEndpointsToRoads();
             if (IncludePrefabToPrefabLinks) SnapPrefabEndpointsToPrefabs();
             ComputeNodeDegrees();
 
@@ -178,6 +227,8 @@ namespace TsMap.Routing
             Logger.Instance.Info($"[LaneGraphDebug] Writing split debug graph {Path.Combine(directoryPath, baseName)}.* ...");
 
             var nodeFiles = new List<string>();
+            var nodeChunks = new List<ChunkInfo>();
+            ChunkInfo currentNodeChunk = null;
             int nodeIndex = 0;
             int nodesInChunk = 0;
             JsonTextWriter nodeWriter = null;
@@ -185,13 +236,21 @@ namespace TsMap.Routing
             FileStream nodeFileStream = null;
             try
             {
+                var sortedNodes = new List<KeyValuePair<long, LaneDebugNode>>();
                 foreach (var node in _nodes.Values)
+                    sortedNodes.Add(new KeyValuePair<long, LaneDebugNode>(SpatialSortKey(node.X, node.Z), node));
+                sortedNodes.Sort((a, b) => a.Key.CompareTo(b.Key));
+
+                foreach (var pair in sortedNodes)
                 {
+                    var node = pair.Value;
                     if (nodeWriter == null || nodesInChunk >= NodeChunkSize)
                     {
                         CloseArrayWriter(nodeWriter, nodeStreamWriter, nodeFileStream);
                         string fileName = $"{baseName}.nodes.{nodeIndex:000}.json";
                         nodeFiles.Add(fileName);
+                        currentNodeChunk = new ChunkInfo { File = fileName };
+                        nodeChunks.Add(currentNodeChunk);
                         nodeFileStream = new FileStream(Path.Combine(directoryPath, fileName), FileMode.Create, FileAccess.Write);
                         nodeStreamWriter = new StreamWriter(nodeFileStream);
                         nodeWriter = new JsonTextWriter(nodeStreamWriter) { Formatting = Formatting.None };
@@ -200,6 +259,7 @@ namespace TsMap.Routing
                         nodesInChunk = 0;
                     }
                     WriteNodeObject(nodeWriter, node);
+                    currentNodeChunk?.Include(node.X, node.Z);
                     nodesInChunk++;
                 }
             }
@@ -209,6 +269,8 @@ namespace TsMap.Routing
             }
 
             var edgeFiles = new List<string>();
+            var edgeChunks = new List<ChunkInfo>();
+            ChunkInfo currentEdgeChunk = null;
             int edgeIndex = 0;
             int edgesInChunk = 0;
             JsonTextWriter edgeWriter = null;
@@ -216,13 +278,21 @@ namespace TsMap.Routing
             FileStream edgeFileStream = null;
             try
             {
+                var sortedEdges = new List<KeyValuePair<long, LaneDebugEdge>>();
                 foreach (var edge in _edges)
+                    sortedEdges.Add(new KeyValuePair<long, LaneDebugEdge>(SpatialSortKey(edge), edge));
+                sortedEdges.Sort((a, b) => a.Key.CompareTo(b.Key));
+
+                foreach (var pair in sortedEdges)
                 {
+                    var edge = pair.Value;
                     if (edgeWriter == null || edgesInChunk >= EdgeChunkSize)
                     {
                         CloseArrayWriter(edgeWriter, edgeStreamWriter, edgeFileStream);
                         string fileName = $"{baseName}.edges.{edgeIndex:000}.json";
                         edgeFiles.Add(fileName);
+                        currentEdgeChunk = new ChunkInfo { File = fileName };
+                        edgeChunks.Add(currentEdgeChunk);
                         edgeFileStream = new FileStream(Path.Combine(directoryPath, fileName), FileMode.Create, FileAccess.Write);
                         edgeStreamWriter = new StreamWriter(edgeFileStream);
                         edgeWriter = new JsonTextWriter(edgeStreamWriter) { Formatting = Formatting.None };
@@ -231,6 +301,7 @@ namespace TsMap.Routing
                         edgesInChunk = 0;
                     }
                     WriteEdgeObject(edgeWriter, edge);
+                    currentEdgeChunk?.Include(edge.Path);
                     edgesInChunk++;
                 }
             }
@@ -260,15 +331,63 @@ namespace TsMap.Routing
                 foreach (var fileName in nodeFiles) jw.WriteValue(fileName);
                 jw.WriteEndArray();
 
+                jw.WritePropertyName("nodeChunks");
+                WriteChunkInfoArray(jw, nodeChunks);
+
                 jw.WritePropertyName("edges");
                 jw.WriteStartArray();
                 foreach (var fileName in edgeFiles) jw.WriteValue(fileName);
                 jw.WriteEndArray();
 
+                jw.WritePropertyName("edgeChunks");
+                WriteChunkInfoArray(jw, edgeChunks);
+
                 jw.WriteEndObject();
             }
 
             Logger.Instance.Info($"[LaneGraphDebug] Split export complete: {_nodes.Count} nodes in {nodeFiles.Count} files, {_edges.Count} edges in {edgeFiles.Count} files");
+        }
+
+        private static void WriteChunkInfoArray(JsonTextWriter jw, List<ChunkInfo> chunks)
+        {
+            jw.WriteStartArray();
+            foreach (var chunk in chunks)
+            {
+                jw.WriteStartObject();
+                jw.WritePropertyName("file"); jw.WriteValue(chunk.File);
+                jw.WritePropertyName("minX"); jw.WriteValue(Math.Round(chunk.MinX, 4));
+                jw.WritePropertyName("maxX"); jw.WriteValue(Math.Round(chunk.MaxX, 4));
+                jw.WritePropertyName("minZ"); jw.WriteValue(Math.Round(chunk.MinZ, 4));
+                jw.WritePropertyName("maxZ"); jw.WriteValue(Math.Round(chunk.MaxZ, 4));
+                jw.WriteEndObject();
+            }
+            jw.WriteEndArray();
+        }
+
+        private static long SpatialSortKey(LaneDebugEdge edge)
+        {
+            if (edge.Path == null || edge.Path.Length == 0) return 0;
+            double x = 0;
+            double z = 0;
+            int count = 0;
+            foreach (var pt in edge.Path)
+            {
+                if (pt == null || pt.Length < 2) continue;
+                x += pt[0];
+                z += pt[1];
+                count++;
+            }
+            if (count == 0) return 0;
+            return SpatialSortKey((float)(x / count), (float)(z / count));
+        }
+
+        private static long SpatialSortKey(float x, float z)
+        {
+            const float CellSize = 10000f;
+            const int Bias = 100000;
+            long cellX = (long)Math.Floor(x / CellSize) + Bias;
+            long cellZ = (long)Math.Floor(z / CellSize) + Bias;
+            return (cellX << 32) ^ (cellZ & 0xffffffffL);
         }
 
         private static void DeleteExistingSplitFiles(string directoryPath, string baseName)
@@ -318,6 +437,7 @@ namespace TsMap.Routing
             jw.WritePropertyName("kind"); jw.WriteValue(edge.Kind);
             jw.WritePropertyName("sourceUid"); jw.WriteValue(edge.SourceUid);
             jw.WritePropertyName("lane"); jw.WriteValue(edge.Lane);
+            jw.WritePropertyName("speedClass"); jw.WriteValue(edge.SpeedClass);
             jw.WritePropertyName("direction"); jw.WriteValue(edge.Direction);
             jw.WritePropertyName("trafficSide"); jw.WriteValue(edge.TrafficSide);
             jw.WritePropertyName("isTemporaryLeftHandTrafficRoad"); jw.WriteValue(edge.IsTemporaryLeftHandTrafficRoad);
@@ -449,6 +569,7 @@ namespace TsMap.Routing
                 if (edge != null)
                 {
                     jw.WritePropertyName("direction"); jw.WriteValue(edge.Direction);
+                    jw.WritePropertyName("speedClass"); jw.WriteValue(edge.SpeedClass);
                     jw.WritePropertyName("trafficSide"); jw.WriteValue(edge.TrafficSide);
                     jw.WritePropertyName("isTemporaryLeftHandTrafficRoad"); jw.WriteValue(edge.IsTemporaryLeftHandTrafficRoad);
                     jw.WritePropertyName("midX"); jw.WriteValue(edge.MidX);
@@ -477,6 +598,7 @@ namespace TsMap.Routing
                 float roadMidX = (startNode.X + endNode.X) * 0.5f;
                 float roadMidZ = (startNode.Z + endNode.Z) * 0.5f;
                 bool invertRoadLaneDirection = IsTemporaryLeftHandTrafficRoad(roadMidX, roadMidZ);
+                string speedClass = RoadSpeedClass(road.RoadLook);
 
                 for (int lane = 0; lane < rightCount; lane++)
                 {
@@ -493,7 +615,8 @@ namespace TsMap.Routing
                         invertRoadLaneDirection ? startNode.Uid : endNode.Uid,
                         invertRoadLaneDirection,
                         roadMidX,
-                        roadMidZ);
+                        roadMidZ,
+                        speedClass);
                 }
 
                 for (int lane = 0; lane < leftCount; lane++)
@@ -511,7 +634,8 @@ namespace TsMap.Routing
                         invertRoadLaneDirection ? endNode.Uid : startNode.Uid,
                         invertRoadLaneDirection,
                         roadMidX,
-                        roadMidZ);
+                        roadMidZ,
+                        speedClass);
                 }
             }
         }
@@ -543,6 +667,33 @@ namespace TsMap.Routing
             return inside;
         }
 
+        private static string RoadSpeedClass(TsRoadLook look)
+        {
+            foreach (var lane in look.LanesLeft)
+            {
+                var c = LaneSpeedClass(lane);
+                if (c != null) return c;
+            }
+            foreach (var lane in look.LanesRight)
+            {
+                var c = LaneSpeedClass(lane);
+                if (c != null) return c;
+            }
+            return "local_road";
+        }
+
+        private static string LaneSpeedClass(string lane)
+        {
+            if (lane == null) return null;
+            if (lane.IndexOf("motorway", StringComparison.OrdinalIgnoreCase) >= 0) return "motorway";
+            if (lane.IndexOf("freeway", StringComparison.OrdinalIgnoreCase) >= 0) return "freeway";
+            if (lane.IndexOf("expressway", StringComparison.OrdinalIgnoreCase) >= 0) return "expressway";
+            if (lane.IndexOf("divided", StringComparison.OrdinalIgnoreCase) >= 0) return "divided";
+            if (lane.IndexOf("slow_road", StringComparison.OrdinalIgnoreCase) >= 0) return "slow_road";
+            if (lane.IndexOf("slow road", StringComparison.OrdinalIgnoreCase) >= 0) return "slow_road";
+            return null;
+        }
+
         private void AddRoadLane(
             TsRoadItem road,
             string side,
@@ -553,7 +704,8 @@ namespace TsMap.Routing
             ulong pathEndRawNodeUid,
             bool isTemporaryLeftHandTrafficRoad = false,
             float midX = 0f,
-            float midZ = 0f)
+            float midZ = 0f,
+            string speedClass = "local_road")
         {
             if (path == null || path.Length < 2) return;
 
@@ -572,6 +724,7 @@ namespace TsMap.Routing
                 Kind = "road",
                 SourceUid = road.Uid.ToString("X"),
                 Lane = lane,
+                SpeedClass = speedClass,
                 Direction = forward ? "start-to-end" : "end-to-start",
                 TrafficSide = isTemporaryLeftHandTrafficRoad ? "temporary-left-hand" : "right-hand",
                 IsTemporaryLeftHandTrafficRoad = isTemporaryLeftHandTrafficRoad,
@@ -640,6 +793,7 @@ namespace TsMap.Routing
                                 Kind = "prefab",
                                 SourceUid = prefab.Uid.ToString("X"),
                                 Lane = lane,
+                                SpeedClass = "local_road",
                                 Path = path,
                             };
                             _edges.Add(edge);
@@ -778,6 +932,93 @@ namespace TsMap.Routing
             Logger.Instance.Info($"[LaneGraphDebug] Matched {snapped} prefab endpoints to adjacent prefab endpoints");
         }
 
+        private void SnapRoadEndpointsToRoads()
+        {
+            const float MaxSnapDistance = 20f;
+            const float MaxAngleDeg = 110f;
+            float minDot = (float)Math.Cos(MaxAngleDeg * Math.PI / 180.0);
+
+            var startsByRawNode = new Dictionary<string, List<LaneEndpoint>>();
+            var endsByRawNode = new Dictionary<string, List<LaneEndpoint>>();
+            foreach (var endpoint in _endpoints)
+            {
+                if (endpoint.Edge.Kind != "road") continue;
+                string key = RoadEndpointGroupKey(endpoint);
+                var groups = endpoint.AtStart ? startsByRawNode : endsByRawNode;
+                if (!groups.TryGetValue(key, out var list))
+                {
+                    list = new List<LaneEndpoint>();
+                    groups[key] = list;
+                }
+                list.Add(endpoint);
+            }
+
+            int snapped = 0;
+            foreach (var kv in endsByRawNode)
+            {
+                if (!startsByRawNode.TryGetValue(kv.Key, out var starts)) continue;
+                snapped += SnapRoadEndpointGroup(kv.Value, starts, MaxSnapDistance, minDot);
+            }
+
+            Logger.Instance.Info($"[LaneGraphDebug] Matched {snapped} road endpoints to adjacent road endpoints");
+        }
+
+        private static string RoadEndpointGroupKey(LaneEndpoint endpoint)
+        {
+            return endpoint.RawNodeUid.ToString("X") + ":" + RoadLaneSideRank(endpoint);
+        }
+
+        private int SnapRoadEndpointGroup(
+            List<LaneEndpoint> endEndpoints,
+            List<LaneEndpoint> startEndpoints,
+            float maxSnapDistance,
+            float minDot)
+        {
+            endEndpoints = UniqueEndpointsById(endEndpoints);
+            startEndpoints = UniqueEndpointsById(startEndpoints);
+            endEndpoints.RemoveAll(e => startEndpoints.Exists(s => s.Id == e.Id));
+            if (endEndpoints.Count == 0 || startEndpoints.Count == 0) return 0;
+
+            float avgX = 0f, avgZ = 0f;
+            foreach (var endpoint in endEndpoints)
+            {
+                avgX += endpoint.DirX;
+                avgZ += endpoint.DirZ;
+            }
+            float avgLen = (float)Math.Sqrt(avgX * avgX + avgZ * avgZ);
+            if (avgLen < 0.001f) return 0;
+            avgX /= avgLen;
+            avgZ /= avgLen;
+
+            float lateralX = -avgZ;
+            float lateralZ = avgX;
+            endEndpoints.Sort((a, b) => Lateral(a, lateralX, lateralZ).CompareTo(Lateral(b, lateralX, lateralZ)));
+            startEndpoints.Sort((a, b) => Lateral(a, lateralX, lateralZ).CompareTo(Lateral(b, lateralX, lateralZ)));
+
+            var matches = FindBestOrderedMatches(endEndpoints, startEndpoints, maxSnapDistance, minDot);
+            int snapped = 0;
+            foreach (var match in matches)
+            {
+                var from = match.Road;
+                var to = match.Prefab;
+                if (from.Edge.SourceUid == to.Edge.SourceUid) continue;
+
+                _edges.Add(new LaneDebugEdge
+                {
+                    From = from.Id,
+                    To = to.Id,
+                    Kind = match.Distance < 2f ? "road_link_good" : "road_link_adjusted",
+                    SourceUid = from.Edge.SourceUid,
+                    Lane = from.Edge.Lane + " -> " + to.Edge.Lane + $" ({match.Distance:0.0}m, dot {match.Dot:0.00})",
+                    SpeedClass = from.Edge.SpeedClass ?? to.Edge.SpeedClass ?? "local_road",
+                    Path = new[] { new[] { from.X, from.Z }, new[] { to.X, to.Z } },
+                });
+                snapped++;
+            }
+
+            return snapped;
+        }
+
         private int SnapPrefabEndpointGroup(
             List<LaneEndpoint> endEndpoints,
             List<LaneEndpoint> startEndpoints,
@@ -831,6 +1072,7 @@ namespace TsMap.Routing
                     Kind = match.Distance < 2f ? "prefab_link_good" : "prefab_link_adjusted",
                     SourceUid = match.Road.Edge.SourceUid,
                     Lane = match.Road.Edge.Lane + " -> " + match.Prefab.Edge.Lane + $" ({match.Distance:0.0}m, dot {match.Dot:0.00})",
+                    SpeedClass = "local_road",
                     Path = new[] { new[] { match.Road.X, match.Road.Z }, new[] { match.Prefab.X, match.Prefab.Z } },
                 });
                 snapped++;
@@ -918,6 +1160,7 @@ namespace TsMap.Routing
                     Kind = match.Distance < 2f ? "snap_good" : "snap_adjusted",
                     SourceUid = roadEndpoint.Edge.SourceUid,
                     Lane = roadEndpoint.Edge.Lane + " -> " + best.Edge.Lane + $" ({match.Distance:0.0}m, dot {match.Dot:0.00})",
+                    SpeedClass = "local_road",
                     Path = path,
                 });
                 snapped++;
@@ -1584,8 +1827,6 @@ namespace TsMap.Routing
             Dictionary<int, int> endingCurveIndexToNodeIndex,
             int inputLaneIndex)
         {
-            var seenIndices = new HashSet<int>();
-
             CurvePath Prefix(CurvePath path, int curveIndex)
             {
                 var indices = new List<int>(path.CurveIndices);
@@ -1593,11 +1834,10 @@ namespace TsMap.Routing
                 return new CurvePath { EndNodeIndex = path.EndNodeIndex, CurveIndices = indices };
             }
 
-            List<CurvePath> GetPaths(int curveIndex)
+            List<CurvePath> GetPaths(int curveIndex, HashSet<int> pathSeen)
             {
                 var paths = new List<CurvePath>();
-                if (seenIndices.Contains(curveIndex)) return paths;
-                seenIndices.Add(curveIndex);
+                if (pathSeen.Contains(curveIndex)) return paths;
 
                 if (endingCurveIndexToNodeIndex.TryGetValue(curveIndex, out var nodeIndex))
                 {
@@ -1608,13 +1848,14 @@ namespace TsMap.Routing
                 if (curveIndex < 0 || curveIndex >= desc.NavCurves.Count) return paths;
                 var curve = desc.NavCurves[curveIndex];
                 if (curve.NextLines == null) return paths;
+                var nextSeen = new HashSet<int>(pathSeen) { curveIndex };
                 foreach (var nextCurveIndex in curve.NextLines)
-                    foreach (var path in GetPaths(nextCurveIndex))
+                    foreach (var path in GetPaths(nextCurveIndex, nextSeen))
                         paths.Add(Prefix(path, nextCurveIndex));
                 return paths;
             }
 
-            var result = GetPaths(inputLaneIndex);
+            var result = GetPaths(inputLaneIndex, new HashSet<int>());
             for (int i = 0; i < result.Count; i++)
                 result[i] = Prefix(result[i], inputLaneIndex);
             return result;
@@ -1764,6 +2005,7 @@ namespace TsMap.Routing
             public string Kind;
             public string SourceUid;
             public string Lane;
+            public string SpeedClass;
             public string Direction;
             public string TrafficSide;
             public bool IsTemporaryLeftHandTrafficRoad;
@@ -1853,6 +2095,33 @@ namespace TsMap.Routing
             public float EndZ;
         }
 
+        private class ChunkInfo
+        {
+            public string File;
+            public float MinX = float.MaxValue;
+            public float MaxX = float.MinValue;
+            public float MinZ = float.MaxValue;
+            public float MaxZ = float.MinValue;
+
+            public void Include(float x, float z)
+            {
+                if (x < MinX) MinX = x;
+                if (x > MaxX) MaxX = x;
+                if (z < MinZ) MinZ = z;
+                if (z > MaxZ) MaxZ = z;
+            }
+
+            public void Include(float[][] path)
+            {
+                if (path == null) return;
+                foreach (var pt in path)
+                {
+                    if (pt == null || pt.Length < 2) continue;
+                    Include(pt[0], pt[1]);
+                }
+            }
+        }
+
         private class CurvePath
         {
             public int EndNodeIndex;
@@ -1867,6 +2136,38 @@ namespace TsMap.Routing
             public float OriginPpdZ;
             public float OriginWorldX;
             public float OriginWorldZ;
+        }
+
+        public class LaneGraphSnapshot
+        {
+            public List<SnapshotNode> Nodes { get; } = new List<SnapshotNode>();
+            public List<SnapshotEdge> Edges { get; } = new List<SnapshotEdge>();
+        }
+
+        public class SnapshotNode
+        {
+            public string Id;
+            public float X;
+            public float Z;
+            public string Kind;
+            public string SourceUid;
+            public string Lane;
+            public string RawNodeUid;
+            public string SnapStatus;
+            public string SnapDetail;
+            public int InDegree;
+            public int OutDegree;
+        }
+
+        public class SnapshotEdge
+        {
+            public string From;
+            public string To;
+            public string Kind;
+            public string SourceUid;
+            public string Lane;
+            public string SpeedClass;
+            public float[][] Path;
         }
     }
 }

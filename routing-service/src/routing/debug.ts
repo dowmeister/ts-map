@@ -43,6 +43,13 @@ type LaneGraphDebugEdge = {
   pathEndRawNodeUid?: string;
   path: [number, number][];
 };
+type LaneGraphDebugChunk = {
+  file: string;
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+};
 type LaneGraphDebugData = {
   nodes: LaneGraphDebugNode[];
   edges: LaneGraphDebugEdge[];
@@ -55,8 +62,15 @@ type LaneGraphDebugManifest = {
   };
   nodes?: string[] | LaneGraphDebugNode[];
   edges?: string[] | LaneGraphDebugEdge[];
+  nodeChunks?: LaneGraphDebugChunk[];
+  edgeChunks?: LaneGraphDebugChunk[];
 };
-const laneGraphCache: Record<string, LaneGraphDebugData | null> = {};
+type LaneGraphDebugSource =
+  | { split: true; baseDir: string; manifest: LaneGraphDebugManifest }
+  | { split: false; data: LaneGraphDebugData };
+const laneGraphSourceCache: Record<string, LaneGraphDebugSource | null> = {};
+const laneChunkCache = new Map<string, unknown[]>();
+const MAX_LANE_CHUNK_CACHE_ENTRIES = 96;
 
 function firstExistingPath(paths: string[]): string | null {
   for (const filePath of paths) {
@@ -108,6 +122,8 @@ export function graphDebugHandler(req: Request, res: Response): void {
 
   const { graph, spatialIndex } = state;
   const { nodes, adjacency, bounds } = graph;
+  const syntheticOnly = req.query['synthetic'] === 'true';
+  const syntheticTypes = new Set(['company_approach', 'ferry_approach', 'ferry']);
 
   const candidates = spatialIndex.findInBbox(minX, maxX, minZ, maxZ);
   const nodeSet = new Set<string>(candidates.map(c => c.uid));
@@ -116,7 +132,10 @@ export function graphDebugHandler(req: Request, res: Response): void {
   for (const uid of nodeSet) {
     const outEdges = adjacency[uid];
     if (!outEdges) continue;
-    for (const e of outEdges) edges.push(e);
+    for (const e of outEdges) {
+      if (syntheticOnly && !syntheticTypes.has(e.itemType)) continue;
+      edges.push(e);
+    }
   }
 
   const edgePaths = prefabPathsCache[game] ?? {};
@@ -206,8 +225,8 @@ export function graphDebugHandler(req: Request, res: Response): void {
   res.json({ type: 'FeatureCollection', features });
 }
 
-function loadLaneGraphDebug(game: string): LaneGraphDebugData | null {
-  if (game in laneGraphCache) return laneGraphCache[game];
+function loadLaneGraphDebugSource(game: string): LaneGraphDebugSource | null {
+  if (game in laneGraphSourceCache) return laneGraphSourceCache[game];
   const t0 = Date.now();
   try {
     const filePath = firstExistingPath([
@@ -215,7 +234,7 @@ function loadLaneGraphDebug(game: string): LaneGraphDebugData | null {
       path.join(MAP_DATA_PATH, game, 'geojson', 'routing-lane-graph-debug.json'),
     ]);
     if (!filePath) {
-      laneGraphCache[game] = null;
+      laneGraphSourceCache[game] = null;
       logDebug(`[LaneDebug:${game}] Lane graph file not found`);
       return null;
     }
@@ -223,33 +242,97 @@ function loadLaneGraphDebug(game: string): LaneGraphDebugData | null {
     const manifest = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as LaneGraphDebugManifest;
     const baseDir = path.dirname(filePath);
     if (manifest.meta?.split) {
-      const nodes: LaneGraphDebugNode[] = [];
-      const edges: LaneGraphDebugEdge[] = [];
-
-      for (const fileName of manifest.nodes ?? []) {
-        if (typeof fileName !== 'string') continue;
-        const chunk = JSON.parse(fs.readFileSync(path.join(baseDir, fileName), 'utf-8')) as LaneGraphDebugNode[];
-        for (const item of chunk) nodes.push(item);
-      }
-
-      for (const fileName of manifest.edges ?? []) {
-        if (typeof fileName !== 'string') continue;
-        const chunk = JSON.parse(fs.readFileSync(path.join(baseDir, fileName), 'utf-8')) as LaneGraphDebugEdge[];
-        for (const item of chunk) edges.push(item);
-      }
-
-      laneGraphCache[game] = { nodes, edges };
+      laneGraphSourceCache[game] = { split: true, baseDir, manifest };
+      logDebug(`[LaneDebug:${game}] Loaded split manifest: ${manifest.meta?.nodeCount ?? '?'} nodes, ${manifest.meta?.edgeCount ?? '?'} edges in ${Date.now() - t0}ms`);
     } else {
-      laneGraphCache[game] = manifest as LaneGraphDebugData;
+      laneGraphSourceCache[game] = { split: false, data: manifest as LaneGraphDebugData };
+      const data = laneGraphSourceCache[game].data;
+      logDebug(`[LaneDebug:${game}] Loaded lane graph: ${data.nodes.length} nodes, ${data.edges.length} edges in ${Date.now() - t0}ms`);
     }
 
-    logDebug(`[LaneDebug:${game}] Loaded lane graph: ${laneGraphCache[game]?.nodes.length ?? 0} nodes, ${laneGraphCache[game]?.edges.length ?? 0} edges in ${Date.now() - t0}ms`);
-    return laneGraphCache[game];
+    return laneGraphSourceCache[game];
   } catch (err) {
-    laneGraphCache[game] = null;
+    laneGraphSourceCache[game] = null;
     logDebug(`[LaneDebug:${game}] Failed to load lane graph: ${err instanceof Error ? err.message : String(err)}`);
     return null;
   }
+}
+
+function readLaneChunk<T>(baseDir: string, fileName: string): T[] {
+  const filePath = path.join(baseDir, fileName);
+  const cached = laneChunkCache.get(filePath);
+  if (cached) {
+    laneChunkCache.delete(filePath);
+    laneChunkCache.set(filePath, cached);
+    return cached as T[];
+  }
+
+  const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as T[];
+  laneChunkCache.set(filePath, parsed as unknown[]);
+  while (laneChunkCache.size > MAX_LANE_CHUNK_CACHE_ENTRIES) {
+    const oldest = laneChunkCache.keys().next().value;
+    if (!oldest) break;
+    laneChunkCache.delete(oldest);
+  }
+  return parsed;
+}
+
+function chunkTouchesBbox(chunk: LaneGraphDebugChunk, minX: number, maxX: number, minZ: number, maxZ: number): boolean {
+  return chunk.maxX >= minX && chunk.minX <= maxX && chunk.maxZ >= minZ && chunk.minZ <= maxZ;
+}
+
+function nodeChunkFiles(source: Extract<LaneGraphDebugSource, { split: true }>, minX?: number, maxX?: number, minZ?: number, maxZ?: number): string[] {
+  if (source.manifest.nodeChunks && minX !== undefined && maxX !== undefined && minZ !== undefined && maxZ !== undefined) {
+    return source.manifest.nodeChunks
+      .filter(chunk => chunkTouchesBbox(chunk, minX, maxX, minZ, maxZ))
+      .map(chunk => chunk.file);
+  }
+  return (source.manifest.nodes ?? []).filter((fileName): fileName is string => typeof fileName === 'string');
+}
+
+function edgeChunkFiles(source: Extract<LaneGraphDebugSource, { split: true }>, minX?: number, maxX?: number, minZ?: number, maxZ?: number): string[] {
+  if (source.manifest.edgeChunks && minX !== undefined && maxX !== undefined && minZ !== undefined && maxZ !== undefined) {
+    return source.manifest.edgeChunks
+      .filter(chunk => chunkTouchesBbox(chunk, minX, maxX, minZ, maxZ))
+      .map(chunk => chunk.file);
+  }
+  return (source.manifest.edges ?? []).filter((fileName): fileName is string => typeof fileName === 'string');
+}
+
+function forEachLaneNode(source: LaneGraphDebugSource, visit: (node: LaneGraphDebugNode) => void, bbox?: { minX: number; maxX: number; minZ: number; maxZ: number }): number {
+  let total = 0;
+  if (!source.split) {
+    for (const node of source.data.nodes) {
+      total++;
+      visit(node);
+    }
+    return total;
+  }
+
+  for (const fileName of nodeChunkFiles(source, bbox?.minX, bbox?.maxX, bbox?.minZ, bbox?.maxZ)) {
+    const chunk = readLaneChunk<LaneGraphDebugNode>(source.baseDir, fileName);
+    total += chunk.length;
+    for (const node of chunk) visit(node);
+  }
+  return total;
+}
+
+function forEachLaneEdge(source: LaneGraphDebugSource, visit: (edge: LaneGraphDebugEdge) => void, bbox?: { minX: number; maxX: number; minZ: number; maxZ: number }): number {
+  let total = 0;
+  if (!source.split) {
+    for (const edge of source.data.edges) {
+      total++;
+      visit(edge);
+    }
+    return total;
+  }
+
+  for (const fileName of edgeChunkFiles(source, bbox?.minX, bbox?.maxX, bbox?.minZ, bbox?.maxZ)) {
+    const chunk = readLaneChunk<LaneGraphDebugEdge>(source.baseDir, fileName);
+    total += chunk.length;
+    for (const edge of chunk) visit(edge);
+  }
+  return total;
 }
 
 function pathTouchesBbox(pathPts: [number, number][], minX: number, maxX: number, minZ: number, maxZ: number): boolean {
@@ -312,21 +395,24 @@ export function laneGraphDebugHandler(req: Request, res: Response): void {
     return;
   }
 
-  const data = loadLaneGraphDebug(game);
-  if (!data) {
+  const source = loadLaneGraphDebugSource(game);
+  if (!source) {
     logDebug(`[LaneDebug:${game}] empty response, lane graph unavailable`);
     res.json({ type: 'FeatureCollection', features: [] });
     return;
   }
 
   const bounds = state.graph.bounds;
+  const includeArrows = req.query['arrows'] !== 'false';
   const features: object[] = [];
   let visibleEdges = 0;
   let visibleNodes = 0;
 
-  for (const edge of data.edges) {
-    if (!edge.path || edge.path.length < 2) continue;
-    if (!pathTouchesBbox(edge.path, minX, maxX, minZ, maxZ)) continue;
+  const bbox = { minX, maxX, minZ, maxZ };
+
+  const totalEdges = forEachLaneEdge(source, edge => {
+    if (!edge.path || edge.path.length < 2) return;
+    if (!pathTouchesBbox(edge.path, minX, maxX, minZ, maxZ)) return;
     visibleEdges++;
 
     const coords = edge.path.map(([x, z]) => ets2ToWgs84(x, z, bounds));
@@ -350,8 +436,9 @@ export function laneGraphDebugHandler(req: Request, res: Response): void {
       },
     });
 
-    const arrow = arrowOnLine(coords, 0.7);
-    if (arrow) {
+    if (includeArrows) {
+      const arrow = arrowOnLine(coords, 0.7);
+      if (arrow) {
       features.push({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [arrow.lon, arrow.lat] },
@@ -370,11 +457,12 @@ export function laneGraphDebugHandler(req: Request, res: Response): void {
           pathEndRawNodeUid: edge.pathEndRawNodeUid,
         },
       });
+      }
     }
-  }
+  }, bbox);
 
-  for (const node of data.nodes) {
-    if (node.x < minX || node.x > maxX || node.z < minZ || node.z > maxZ) continue;
+  const totalNodes = forEachLaneNode(source, node => {
+    if (node.x < minX || node.x > maxX || node.z < minZ || node.z > maxZ) return;
     visibleNodes++;
     const [lon, lat] = ets2ToWgs84(node.x, node.z, bounds);
     features.push({
@@ -395,9 +483,9 @@ export function laneGraphDebugHandler(req: Request, res: Response): void {
         outDegree: node.outDegree,
       },
     });
-  }
+  }, bbox);
 
-  logDebug(`[LaneDebug:${game}] bbox X[${minX.toFixed(0)},${maxX.toFixed(0)}] Z[${minZ.toFixed(0)},${maxZ.toFixed(0)}] nodes=${visibleNodes}/${data.nodes.length} edges=${visibleEdges}/${data.edges.length} features=${features.length} ${Date.now() - t0}ms`);
+  logDebug(`[LaneDebug:${game}] bbox X[${minX.toFixed(0)},${maxX.toFixed(0)}] Z[${minZ.toFixed(0)},${maxZ.toFixed(0)}] nodes=${visibleNodes}/${totalNodes} edges=${visibleEdges}/${totalEdges} features=${features.length} ${Date.now() - t0}ms`);
   res.json({ type: 'FeatureCollection', features });
 }
 
@@ -411,8 +499,8 @@ export function laneGraphIssuesHandler(req: Request, res: Response): void {
     return;
   }
 
-  const data = loadLaneGraphDebug(game);
-  if (!data) {
+  const source = loadLaneGraphDebugSource(game);
+  if (!source) {
     res.json({ type: 'FeatureCollection', features: [] });
     return;
   }
@@ -424,10 +512,10 @@ export function laneGraphIssuesHandler(req: Request, res: Response): void {
   let blocking = 0;
   let soft = 0;
 
-  for (const node of data.nodes) {
+  forEachLaneNode(source, node => {
     const isBlocking = blockingIssueKinds.has(node.kind);
     const isSoft = softIssueKinds.has(node.kind);
-    if (!isBlocking && (!includeSoft || !isSoft)) continue;
+    if (!isBlocking && (!includeSoft || !isSoft)) return;
     if (isBlocking) blocking++;
     else soft++;
 
@@ -451,7 +539,7 @@ export function laneGraphIssuesHandler(req: Request, res: Response): void {
         outDegree: node.outDegree,
       },
     });
-  }
+  });
 
   logDebug(`[LaneIssues:${game}] issues=${features.length} blocking=${blocking} soft=${soft} includeSoft=${includeSoft} ${Date.now() - t0}ms`);
   res.json({ type: 'FeatureCollection', features });

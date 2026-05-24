@@ -6,7 +6,7 @@ using TsMap.TsItem;
 
 namespace TsMap.Routing
 {
-    public class RoutingGraphBuilder
+    public class LegacyRoutingGraphBuilder
     {
         private readonly TsMapper _mapper;
         private readonly RoutingGraph _graph = new RoutingGraph();
@@ -23,7 +23,7 @@ namespace TsMap.Routing
         private static float SpeedMult(string speedClass) =>
             MaxSpeedKph / GraphEdge.SpeedClassToKph(speedClass);
 
-        public RoutingGraphBuilder(TsMapper mapper)
+        public LegacyRoutingGraphBuilder(TsMapper mapper)
         {
             _mapper = mapper;
         }

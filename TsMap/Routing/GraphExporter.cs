@@ -5,11 +5,11 @@ using TsMap.Helpers.Logger;
 
 namespace TsMap.Routing
 {
-    public class GraphExporter
+    public class LegacyGraphExporter
     {
         private readonly RoutingGraph _graph;
 
-        public GraphExporter(RoutingGraph graph)
+        public LegacyGraphExporter(RoutingGraph graph)
         {
             _graph = graph;
         }

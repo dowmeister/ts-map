@@ -110,10 +110,13 @@
     <Compile Include="Routing\GraphEdge.cs" />
     <Compile Include="Routing\GraphValidator.cs" />
     <Compile Include="Routing\GraphExporter.cs" />
+    <Compile Include="Routing\GraphExporterLane.cs" />
     <Compile Include="Routing\GraphNode.cs" />
+    <Compile Include="Routing\LaneRoutingGraph.cs" />
     <Compile Include="Routing\LaneGraphDebugExporter.cs" />
     <Compile Include="Routing\RoutingGraph.cs" />
     <Compile Include="Routing\RoutingGraphBuilder.cs" />
+    <Compile Include="Routing\RoutingGraphBuilderLane.cs" />
     <Compile Include="Routing\VehicleType.cs" />
     <Compile Include="Settings.cs" />
     <Compile Include="TsCity.cs" />

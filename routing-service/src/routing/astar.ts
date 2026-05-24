@@ -48,10 +48,30 @@ class BinaryMinHeap {
 }
 
 const MAX_EXPANSIONS = 500_000;
+const LANE_CHANGE_COST_METERS = 10;
+const LOCAL_DETOUR_MULTIPLIER_IN_SHORTEST = 1.45;
 
 function heuristic(a: GraphNode, b: GraphNode): number {
   const dx = a.x - b.x, dz = a.z - b.z;
   return Math.sqrt(dx * dx + dz * dz);
+}
+
+function shortestBaseCost(edge: GraphEdge): number {
+  if (edge.itemType === 'lane_change') {
+    return edge.length + LANE_CHANGE_COST_METERS;
+  }
+
+  // "shortest" should still avoid silly service-area/local-road cuts when a
+  // legal lane change on the main carriageway is enough. Keep this mild so
+  // city routing and genuine exits still work.
+  if (edge.speedClass === 'local_road' &&
+      edge.itemType !== 'lane_link' &&
+      edge.itemType !== 'company_approach' &&
+      edge.itemType !== 'ferry_approach') {
+    return edge.length * LOCAL_DETOUR_MULTIPLIER_IN_SHORTEST;
+  }
+
+  return edge.length;
 }
 
 export function findRoute(
@@ -112,8 +132,10 @@ export function findRoute(
           (edge.itemType === 'ferry' || edge.itemType === 'ferry_approach')) continue;
 
       // fastest (default): use pre-weighted cost (freeways preferred via lower multiplier)
-      // shortest: use raw length so the router minimises metres driven, ignoring speed class
-      const baseCost = (options?.mode === 'shortest') ? edge.length : edge.weight;
+      // shortest: mostly use raw length, but keep lane changes cheap enough to
+      // prevent pointless service-area detours from winning over staying on a
+      // through lane.
+      const baseCost = (options?.mode === 'shortest') ? shortestBaseCost(edge) : edge.weight;
       let weightMult = (options?.avoidHighways && edge.speedClass === 'freeway') ? 100 : 1;
 
       // Ferry→ferry direction change penalty: if we just arrived by ferry and the
@@ -131,35 +153,6 @@ export function findRoute(
             const dot = (inDx * outDx + inDz * outDz) / (inLen * outLen);
             if (dot < 0) weightMult *= 100;   // ferry direction reversal
           }
-        }
-      }
-
-      // U-turn penalty: penalise edges that reverse the incoming direction.
-      // Ferry and company_approach edges are exempt (legitimately reverse).
-      // At the start node (prevEdge is null) we use the goal direction as a
-      // virtual incoming vector so the first move is also penalised correctly.
-      if (currentNode &&
-          edge.itemType !== 'ferry' && edge.itemType !== 'ferry_approach' &&
-          edge.itemType !== 'company_approach') {
-        let inDx: number, inDz: number;
-        if (prevEdge) {
-          const prevFrom = nodes[prevEdge.from];
-          if (!prevFrom) { inDx = 0; inDz = 0; }
-          else { inDx = currentNode.x - prevFrom.x; inDz = currentNode.z - prevFrom.z; }
-        } else {
-          // Start node: virtual incoming = direction from goal toward start
-          // (i.e. we "arrived" travelling toward the goal)
-          inDx = goalNode.x - currentNode.x;
-          inDz = goalNode.z - currentNode.z;
-        }
-        const outDx = toNode.x - currentNode.x, outDz = toNode.z - currentNode.z;
-        const inLen  = Math.sqrt(inDx * inDx + inDz * inDz);
-        const outLen = Math.sqrt(outDx * outDx + outDz * outDz);
-        if (inLen > 0.001 && outLen > 0.001) {
-          const dot = (inDx * outDx + inDz * outDz) / (inLen * outLen);
-          if      (dot < -0.7) weightMult *= 200;  // >134° near-reversal
-          else if (dot < -0.5) weightMult *= 50;   // >120°
-          else if (dot <  0.0) weightMult *= 5;    // >90°  going backwards
         }
       }
 
