@@ -26,6 +26,9 @@ namespace TsMap
         public PointF StartPortLocation { get; private set; }
         public ulong EndPortToken { get; set; }
         public PointF EndPortLocation { get; private set; }
+        public int Price { get; set; }
+        public int TimeMinutes { get; set; }
+        public int DistanceKm { get; set; }
         public List<TsFerryPoint> Connections = new List<TsFerryPoint>();
 
         public void AddConnectionPosition(int index, float x, float z)

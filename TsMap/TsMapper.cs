@@ -379,7 +379,19 @@ namespace TsMap
                     {
                         if (conn != null)
                         {
-                            if (key.Contains("connection_positions"))
+                            if (key == "price")
+                            {
+                                conn.Price = int.Parse(value, CultureInfo.InvariantCulture);
+                            }
+                            else if (key == "time")
+                            {
+                                conn.TimeMinutes = int.Parse(value, CultureInfo.InvariantCulture);
+                            }
+                            else if (key == "distance")
+                            {
+                                conn.DistanceKm = int.Parse(value, CultureInfo.InvariantCulture);
+                            }
+                            else if (key.Contains("connection_positions"))
                             {
                                 var index = int.Parse(key.Split('[')[1].Split(']')[0]);
                                 var vector = value.Split('(')[1].Split(')')[0];

@@ -15,6 +15,7 @@ function logDebug(message: string): void {
 // Per-game lazy-loaded NavCurve/road waypoints: game → "from-to" → [[x,z],...]
 export const prefabPathsCache: Record<string, Record<string, [number, number][]>> = {};
 const prefabPathsLoaded: Record<string, boolean> = {};
+const selectedEdgePathsCache: Record<string, Map<string, [number, number][]>> = {};
 type LaneGraphDebugNode = {
   id: string;
   x: number;
@@ -99,7 +100,151 @@ export function loadEdgePaths(game: string): void {
   }
 }
 
-export function graphDebugHandler(req: Request, res: Response): void {
+function edgePathsFilePath(game: string): string | null {
+  return firstExistingPath([
+    path.join(MAP_DATA_PATH, game, 'routing', 'routing-edge-paths.json'),
+    path.join(MAP_DATA_PATH, game, 'geojson', 'routing-edge-paths.json'),
+  ]);
+}
+
+function escapeJsonString(value: string): string {
+  return JSON.stringify(value).slice(1, -1);
+}
+
+export async function loadSelectedEdgePaths(game: string, keys: Iterable<string>): Promise<Record<string, [number, number][]>> {
+  const needed = new Set<string>();
+  const cache = selectedEdgePathsCache[game] ?? (selectedEdgePathsCache[game] = new Map());
+  const result: Record<string, [number, number][]> = {};
+
+  for (const key of keys) {
+    const cached = cache.get(key);
+    if (cached) result[key] = cached;
+    else needed.add(key);
+  }
+  if (needed.size === 0) return result;
+
+  const filePath = edgePathsFilePath(game);
+  if (!filePath) return result;
+
+  const wantedJsonKeys = new Set(Array.from(needed, escapeJsonString));
+  const wantedByJsonKey = new Map(Array.from(needed, key => [escapeJsonString(key), key]));
+  const t0 = Date.now();
+  let found = 0;
+
+  await new Promise<void>((resolve, reject) => {
+    const stream = fs.createReadStream(filePath, { encoding: 'utf8', highWaterMark: 1024 * 1024 });
+    let state: 'seekKey' | 'key' | 'seekValue' | 'value' | 'skipValue' = 'seekKey';
+    let key = '';
+    let escaped = false;
+    let currentKey: string | null = null;
+    let value = '';
+    let depth = 0;
+    let inString = false;
+    let valueEscaped = false;
+
+    const finishValue = () => {
+      if (currentKey && wantedJsonKeys.has(currentKey)) {
+        const rawKey = wantedByJsonKey.get(currentKey)!;
+        try {
+          const parsed = JSON.parse(value) as [number, number][];
+          result[rawKey] = parsed;
+          cache.set(rawKey, parsed);
+          found++;
+          needed.delete(rawKey);
+          wantedJsonKeys.delete(currentKey);
+        } catch {
+          // Ignore malformed selected entry; route can still fall back to node-to-node geometry.
+        }
+      }
+      currentKey = null;
+      value = '';
+      depth = 0;
+      inString = false;
+      valueEscaped = false;
+      state = 'seekKey';
+      if (needed.size === 0) {
+        stream.destroy();
+        resolve();
+      }
+    };
+
+    stream.on('data', rawChunk => {
+      const chunk = String(rawChunk);
+      for (let i = 0; i < chunk.length; i++) {
+        const ch = chunk[i];
+
+        if (state === 'seekKey') {
+          if (ch === '"') {
+            key = '';
+            escaped = false;
+            state = 'key';
+          }
+          continue;
+        }
+
+        if (state === 'key') {
+          if (escaped) {
+            key += '\\' + ch;
+            escaped = false;
+          } else if (ch === '\\') {
+            escaped = true;
+          } else if (ch === '"') {
+            currentKey = key;
+            state = 'seekValue';
+          } else {
+            key += ch;
+          }
+          continue;
+        }
+
+        if (state === 'seekValue') {
+          if (ch === ':') continue;
+          if (/\s/.test(ch)) continue;
+          if (ch !== '[') {
+            state = 'skipValue';
+            depth = 0;
+            i--;
+            continue;
+          }
+          depth = 1;
+          value = wantedJsonKeys.has(currentKey ?? '') ? '[' : '';
+          state = wantedJsonKeys.has(currentKey ?? '') ? 'value' : 'skipValue';
+          continue;
+        }
+
+        if (state === 'value' || state === 'skipValue') {
+          const collect = state === 'value';
+          if (collect) value += ch;
+
+          if (inString) {
+            if (valueEscaped) valueEscaped = false;
+            else if (ch === '\\') valueEscaped = true;
+            else if (ch === '"') inString = false;
+            continue;
+          }
+
+          if (ch === '"') {
+            inString = true;
+          } else if (ch === '[' || ch === '{') {
+            depth++;
+          } else if (ch === ']' || ch === '}') {
+            depth--;
+            if (depth === 0) finishValue();
+          }
+        }
+      }
+    });
+
+    stream.on('error', reject);
+    stream.on('close', () => resolve());
+    stream.on('end', () => resolve());
+  });
+
+  logDebug(`[Debug:${game}] Loaded selected edge paths: ${found}/${wantedByJsonKey.size} in ${Date.now() - t0}ms`);
+  return result;
+}
+
+export async function graphDebugHandler(req: Request, res: Response): Promise<void> {
   const t0 = Date.now();
   const game = (req.query['game'] as string) || 'ets2';
   const state = getGraphState(game);
@@ -107,8 +252,6 @@ export function graphDebugHandler(req: Request, res: Response): void {
     res.status(503).json({ error: `Routing engine not ready for game '${game}'` });
     return;
   }
-
-  loadEdgePaths(game);
 
   const minX = parseFloat(req.query['minX'] as string);
   const maxX = parseFloat(req.query['maxX'] as string);
@@ -138,7 +281,8 @@ export function graphDebugHandler(req: Request, res: Response): void {
     }
   }
 
-  const edgePaths = prefabPathsCache[game] ?? {};
+  const edgeKeys = edges.map(edge => `${edge.from}-${edge.to}`);
+  const edgePaths = await loadSelectedEdgePaths(game, edgeKeys);
   const features: object[] = [];
 
   // Node features

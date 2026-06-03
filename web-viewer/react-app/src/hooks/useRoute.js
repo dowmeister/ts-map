@@ -7,10 +7,127 @@ const ROUTING_BASE = import.meta.env.VITE_ROUTING_SERVICE_URL || 'http://localho
 
 const VIA_COLORS = ['#E67E22', '#8E44AD', '#2980B9', '#16A085', '#D35400', '#1A5276', '#7D6608']
 
+function createArrowImageData(size = 18) {
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')
+  ctx.fillStyle = '#ffffff'
+  ctx.beginPath()
+  ctx.moveTo(size / 2, 0)
+  ctx.lineTo(size, size)
+  ctx.lineTo(size / 2, size * 0.72)
+  ctx.lineTo(0, size)
+  ctx.closePath()
+  ctx.fill()
+  return ctx.getImageData(0, 0, size, size)
+}
+
+function ensureRouteArrowImage(map) {
+  if (!map || map.hasImage('route-maneuver-arrow')) return
+  map.addImage('route-maneuver-arrow', createArrowImageData(), { sdf: true })
+}
+
+function toMeters(coord, refLat) {
+  const [lon, lat] = coord
+  return {
+    x: lon * 111320 * Math.cos(refLat * Math.PI / 180),
+    y: lat * 110540,
+  }
+}
+
+function distanceMeters(a, b) {
+  const refLat = (a[1] + b[1]) * 0.5
+  const am = toMeters(a, refLat)
+  const bm = toMeters(b, refLat)
+  return Math.hypot(bm.x - am.x, bm.y - am.y)
+}
+
+function bearingDegrees(a, b) {
+  const refLat = (a[1] + b[1]) * 0.5
+  const am = toMeters(a, refLat)
+  const bm = toMeters(b, refLat)
+  return (Math.atan2(bm.x - am.x, bm.y - am.y) * 180 / Math.PI + 360) % 360
+}
+
+function signedTurnDegrees(prev, at, next) {
+  const refLat = at[1]
+  const pm = toMeters(prev, refLat)
+  const am = toMeters(at, refLat)
+  const nm = toMeters(next, refLat)
+  const ax = am.x - pm.x, ay = am.y - pm.y
+  const bx = nm.x - am.x, by = nm.y - am.y
+  const aLen = Math.hypot(ax, ay)
+  const bLen = Math.hypot(bx, by)
+  if (aLen < 1 || bLen < 1) return 0
+  const cross = ax * by - ay * bx
+  const dot = ax * bx + ay * by
+  return Math.atan2(cross, dot) * 180 / Math.PI
+}
+
+function pointBefore(coords, index, minMeters) {
+  let dist = 0
+  for (let i = index; i > 0; i--) {
+    dist += distanceMeters(coords[i], coords[i - 1])
+    if (dist >= minMeters) return coords[i - 1]
+  }
+  return null
+}
+
+function pointAfter(coords, index, minMeters) {
+  let dist = 0
+  for (let i = index; i < coords.length - 1; i++) {
+    dist += distanceMeters(coords[i], coords[i + 1])
+    if (dist >= minMeters) return coords[i + 1]
+  }
+  return null
+}
+
+function buildManeuverFeatures(legs) {
+  const features = []
+  const LOOK_DISTANCE_M = 35
+  const MIN_TURN_DEG = 42
+  const MAX_TURN_DEG = 155
+  const MIN_SPACING_M = 140
+
+  for (const [legIndex, leg] of legs.entries()) {
+    const coords = leg.geometry?.coordinates || []
+    let lastArrowCoord = null
+
+    for (let i = 2; i < coords.length - 2; i++) {
+      const prev = pointBefore(coords, i, LOOK_DISTANCE_M)
+      const next = pointAfter(coords, i, LOOK_DISTANCE_M)
+      if (!prev || !next) continue
+
+      const turn = signedTurnDegrees(prev, coords[i], next)
+      const absTurn = Math.abs(turn)
+      if (absTurn < MIN_TURN_DEG || absTurn > MAX_TURN_DEG) continue
+      if (lastArrowCoord && distanceMeters(lastArrowCoord, coords[i]) < MIN_SPACING_M) continue
+
+      lastArrowCoord = coords[i]
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: coords[i] },
+        properties: {
+          featureType: 'route_maneuver',
+          maneuver: turn > 0 ? 'left' : 'right',
+          turn: Math.round(turn),
+          bearing: bearingDegrees(coords[i], next),
+          legIndex,
+        },
+      })
+    }
+  }
+
+  return features
+}
+
 function buildRouteSource(legs, waypoints, stops, tileMapInfo) {
   const features = []
   for (const leg of legs)
     features.push({ type: 'Feature', geometry: leg.geometry, properties: {} })
+
+  features.push(...buildManeuverFeatures(legs))
 
   let viaIdx = 0
   waypoints.forEach((wp, i) => {
@@ -66,9 +183,11 @@ export function useRoute(mapInstance, tileMapInfo) {
   useEffect(() => {
     if (!mapInstance) return
     const onStyleLoad = () => {
+      ensureRouteArrowImage(mapInstance)
       const source = mapInstance.getSource('route')
       if (source && routeDataRef.current) source.setData(routeDataRef.current)
     }
+    if (mapInstance.isStyleLoaded()) ensureRouteArrowImage(mapInstance)
     mapInstance.on('style.load', onStyleLoad)
     return () => mapInstance.off('style.load', onStyleLoad)
   }, [mapInstance])

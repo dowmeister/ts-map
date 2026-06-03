@@ -50,6 +50,15 @@ class BinaryMinHeap {
 const MAX_EXPANSIONS = 500_000;
 const LANE_CHANGE_COST_METERS = 10;
 const LOCAL_DETOUR_MULTIPLIER_IN_SHORTEST = 1.45;
+const FERRY_BOARDING_PENALTY_METERS = 5_000;
+const FERRY_FALLBACK_PENALTY_METERS = 150_000;
+const FERRY_FALLBACK_MULTIPLIER = 1.5;
+const FERRY_TRANSFER_PENALTY = 1_000_000;
+
+function hasOfficialFerryCost(edge: GraphEdge): boolean {
+  return edge.itemType === 'ferry' &&
+    ((edge.ferryTimeMinutes ?? 0) > 0 || (edge.ferryDistanceKm ?? 0) > 0);
+}
 
 function heuristic(a: GraphNode, b: GraphNode): number {
   const dx = a.x - b.x, dz = a.z - b.z;
@@ -57,6 +66,13 @@ function heuristic(a: GraphNode, b: GraphNode): number {
 }
 
 function shortestBaseCost(edge: GraphEdge): number {
+  if (edge.itemType === 'ferry') {
+    if (hasOfficialFerryCost(edge)) {
+      return edge.length + FERRY_BOARDING_PENALTY_METERS;
+    }
+    return edge.length * FERRY_FALLBACK_MULTIPLIER + FERRY_FALLBACK_PENALTY_METERS;
+  }
+
   if (edge.itemType === 'lane_change') {
     return edge.length + LANE_CHANGE_COST_METERS;
   }
@@ -137,12 +153,23 @@ export function findRoute(
       // through lane.
       const baseCost = (options?.mode === 'shortest') ? shortestBaseCost(edge) : edge.weight;
       let weightMult = (options?.avoidHighways && edge.speedClass === 'freeway') ? 100 : 1;
+      let extraCost = 0;
+      if (edge.itemType === 'ferry') {
+        if (hasOfficialFerryCost(edge)) {
+          extraCost += FERRY_BOARDING_PENALTY_METERS;
+        } else {
+          extraCost += FERRY_FALLBACK_PENALTY_METERS;
+          if (options?.mode !== 'shortest') weightMult *= FERRY_FALLBACK_MULTIPLIER;
+        }
+      }
 
       // Ferry→ferry direction change penalty: if we just arrived by ferry and the
       // next edge is also a ferry going in a significantly different direction,
       // heavily penalise it.  This prevents the A* from "rebounding" across the sea
       // (port A → port B → port C where B→C reverses the A→B heading).
       if (prevEdge?.itemType === 'ferry' && edge.itemType === 'ferry' && currentNode) {
+        extraCost += FERRY_TRANSFER_PENALTY;
+
         const prevPortNode = nodes[prevEdge.from];
         if (prevPortNode) {
           const inDx = currentNode.x - prevPortNode.x, inDz = currentNode.z - prevPortNode.z;
@@ -156,7 +183,7 @@ export function findRoute(
         }
       }
 
-      const tentativeG = g + baseCost * weightMult;
+      const tentativeG = g + baseCost * weightMult + extraCost;
       if (tentativeG < (gScore.get(edge.to) ?? Infinity)) {
         gScore.set(edge.to, tentativeG);
         cameFrom.set(edge.to, uid);

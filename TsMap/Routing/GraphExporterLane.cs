@@ -57,6 +57,21 @@ namespace TsMap.Routing
                     jw.WritePropertyName("speedClass"); jw.WriteValue(edge.SpeedClass);
                     jw.WritePropertyName("speedLimitKph"); jw.WriteValue(edge.SpeedLimitKph);
                     jw.WritePropertyName("itemType"); jw.WriteValue(edge.ItemType);
+                    if (edge.ItemType == "ferry")
+                    {
+                        if (edge.FerryTimeMinutes > 0)
+                        {
+                            jw.WritePropertyName("ferryTimeMinutes"); jw.WriteValue(edge.FerryTimeMinutes);
+                        }
+                        if (edge.FerryDistanceKm > 0)
+                        {
+                            jw.WritePropertyName("ferryDistanceKm"); jw.WriteValue(edge.FerryDistanceKm);
+                        }
+                        if (edge.FerryPrice > 0)
+                        {
+                            jw.WritePropertyName("ferryPrice"); jw.WriteValue(edge.FerryPrice);
+                        }
+                    }
                     jw.WriteEndObject();
                 }
                 jw.WriteEndArray();

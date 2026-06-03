@@ -31,6 +31,9 @@ namespace TsMap.Routing
         public string SpeedClass { get; }
         public string ItemType { get; }
         public float[][] Waypoints { get; }
+        public int FerryTimeMinutes { get; }
+        public int FerryDistanceKm { get; }
+        public int FerryPrice { get; }
 
         public float SpeedLimitKph => GraphEdge.SpeedClassToKph(SpeedClass);
 
@@ -41,7 +44,10 @@ namespace TsMap.Routing
             float length,
             string speedClass,
             string itemType,
-            float[][] waypoints = null)
+            float[][] waypoints = null,
+            int ferryTimeMinutes = 0,
+            int ferryDistanceKm = 0,
+            int ferryPrice = 0)
         {
             From = from;
             To = to;
@@ -50,6 +56,9 @@ namespace TsMap.Routing
             SpeedClass = speedClass;
             ItemType = itemType;
             Waypoints = waypoints;
+            FerryTimeMinutes = ferryTimeMinutes;
+            FerryDistanceKm = ferryDistanceKm;
+            FerryPrice = ferryPrice;
         }
     }
 }

@@ -3,7 +3,7 @@ import * as path from 'path';
 import { Router, Request, Response } from 'express';
 import { loadGraph, loadMapBounds } from './loader';
 import { setGraphState, getAvailableGames } from './state';
-import { graphDebugHandler, laneGraphDebugHandler, laneGraphIssuesHandler, loadEdgePaths, prefabPathsCache } from './debug';
+import { graphDebugHandler, laneGraphDebugHandler, laneGraphIssuesHandler, loadSelectedEdgePaths } from './debug';
 import { MainComponentIndex } from './component';
 import { SpatialIndex } from './spatial-index';
 import { findNearestMainComponent, findNearestWithHeading } from './nearest';
@@ -17,6 +17,8 @@ interface GameRuntime {
   loadedGraph: LoadedGraph;
   componentIndex: MainComponentIndex;
   spatialIndex: SpatialIndex;
+  outgoingNodes: Set<string>;
+  incomingNodes: Set<string>;
 }
 
 const runtimes: Record<string, GameRuntime> = {};
@@ -71,10 +73,19 @@ function loadGame(mapDataPath: string, game: string): void {
   const spatialIndex = new SpatialIndex(loadedGraph.nodes, loadedGraph.bounds);
   console.log(`[Routing:${game}] Spatial index: ${spatialIndex.cellCount} cells in ${Date.now()-t3}ms`);
 
+  const outgoingNodes = new Set<string>();
+  const incomingNodes = new Set<string>();
+  for (const edges of Object.values(loadedGraph.adjacency)) {
+    for (const edge of edges) {
+      outgoingNodes.add(edge.from);
+      incomingNodes.add(edge.to);
+    }
+  }
+
   const [parisLon, parisLat] = ets2ToWgs84(-22674, -16800, loadedGraph.bounds);
   console.log(`[Routing:${game}] WGS84 check (-22674,-16800): lon=${parisLon.toFixed(2)} lat=${parisLat.toFixed(2)}`);
 
-  runtimes[game] = { loadedGraph, componentIndex, spatialIndex };
+  runtimes[game] = { loadedGraph, componentIndex, spatialIndex, outgoingNodes, incomingNodes };
   setGraphState(game, { graph: loadedGraph, spatialIndex });
   console.log(`[Routing:${game}] Ready`);
 }
@@ -176,7 +187,7 @@ router.get('/graph/debug', graphDebugHandler);
 router.get('/lane-graph/debug', laneGraphDebugHandler);
 router.get('/lane-graph/issues', laneGraphIssuesHandler);
 
-router.get('/route', (req: Request, res: Response) => {
+router.get('/route', async (req: Request, res: Response) => {
   const requestT0 = Date.now();
   const game = resolveGame(req);
   const rt = getRuntimeOrError(res, game);
@@ -202,9 +213,11 @@ router.get('/route', (req: Request, res: Response) => {
     return;
   }
 
-  const { loadedGraph, componentIndex, spatialIndex } = rt;
+  const { loadedGraph, componentIndex, spatialIndex, outgoingNodes, incomingNodes } = rt;
   const { minX, maxX, minZ, maxZ } = loadedGraph.bounds;
   const isInMain = (uid: string) => componentIndex.isInMainComponent(uid);
+  const canDepart = (uid: string) => outgoingNodes.has(uid);
+  const canArrive = (uid: string) => incomingNodes.has(uid);
 
   const marginX = (maxX - minX) * 0.1, marginZ = (maxZ - minZ) * 0.1;
   if (fx < minX - marginX || fx > maxX + marginX || fz < minZ - marginZ || fz > maxZ + marginZ) {
@@ -224,7 +237,7 @@ router.get('/route', (req: Request, res: Response) => {
     : undefined;
   const startUid = headingSnap && isInMain(headingSnap)
     ? headingSnap
-    : findNearestMainComponent(fx, fz, spatialIndex, isInMain);
+    : findNearestMainComponent(fx, fz, spatialIndex, isInMain, canDepart);
   const snapMs = Date.now() - snapT0;
 
   if (!startUid) {
@@ -234,7 +247,7 @@ router.get('/route', (req: Request, res: Response) => {
   }
 
   const goalSnapT0 = Date.now();
-  const goalUid = findNearestMainComponent(tx, tz, spatialIndex, isInMain);
+  const goalUid = findNearestMainComponent(tx, tz, spatialIndex, isInMain, canArrive);
   const goalSnapMs = Date.now() - goalSnapT0;
   if (!goalUid) {
     logRoute(`[Route:${game}] rejected: destination not connected start=${startUid} snapMs=${snapMs} goalSnapMs=${goalSnapMs}`);
@@ -285,8 +298,11 @@ router.get('/route', (req: Request, res: Response) => {
   const ferryLengthKm = Math.round(result.ferryLength * ferryScale / 1000);
   const totalLengthKm = landLengthKm + ferryLengthKm;
 
-  loadEdgePaths(game);
-  const edgePaths = prefabPathsCache[game] ?? {};
+  const edgeKeys: string[] = [];
+  for (let i = 0; i < result.path.length - 1; i++) {
+    edgeKeys.push(`${result.path[i]}-${result.path[i + 1]}`);
+  }
+  const edgePaths = await loadSelectedEdgePaths(game, edgeKeys);
   const geoT0 = Date.now();
   const geoJson = routeToGeoJson(result, loadedGraph.nodes, loadedGraph.bounds, edgePaths);
   const geoMs = Date.now() - geoT0;

@@ -97,6 +97,7 @@ namespace TsMap.Routing
                     SourceUid = edge.SourceUid,
                     Lane = edge.Lane,
                     SpeedClass = edge.SpeedClass,
+                    IsSecret = edge.IsSecret,
                     Path = CopyPath(edge.Path),
                 });
             }
@@ -175,6 +176,7 @@ namespace TsMap.Routing
                     jw.WritePropertyName("sourceUid"); jw.WriteValue(edge.SourceUid);
                     jw.WritePropertyName("lane"); jw.WriteValue(edge.Lane);
                     jw.WritePropertyName("speedClass"); jw.WriteValue(edge.SpeedClass);
+                    jw.WritePropertyName("isSecret"); jw.WriteValue(edge.IsSecret);
                     jw.WritePropertyName("direction"); jw.WriteValue(edge.Direction);
                     jw.WritePropertyName("trafficSide"); jw.WriteValue(edge.TrafficSide);
                     jw.WritePropertyName("isTemporaryLeftHandTrafficRoad"); jw.WriteValue(edge.IsTemporaryLeftHandTrafficRoad);
@@ -438,6 +440,7 @@ namespace TsMap.Routing
             jw.WritePropertyName("sourceUid"); jw.WriteValue(edge.SourceUid);
             jw.WritePropertyName("lane"); jw.WriteValue(edge.Lane);
             jw.WritePropertyName("speedClass"); jw.WriteValue(edge.SpeedClass);
+            jw.WritePropertyName("isSecret"); jw.WriteValue(edge.IsSecret);
             jw.WritePropertyName("direction"); jw.WriteValue(edge.Direction);
             jw.WritePropertyName("trafficSide"); jw.WriteValue(edge.TrafficSide);
             jw.WritePropertyName("isTemporaryLeftHandTrafficRoad"); jw.WriteValue(edge.IsTemporaryLeftHandTrafficRoad);
@@ -570,6 +573,7 @@ namespace TsMap.Routing
                 {
                     jw.WritePropertyName("direction"); jw.WriteValue(edge.Direction);
                     jw.WritePropertyName("speedClass"); jw.WriteValue(edge.SpeedClass);
+                    jw.WritePropertyName("isSecret"); jw.WriteValue(edge.IsSecret);
                     jw.WritePropertyName("trafficSide"); jw.WriteValue(edge.TrafficSide);
                     jw.WritePropertyName("isTemporaryLeftHandTrafficRoad"); jw.WriteValue(edge.IsTemporaryLeftHandTrafficRoad);
                     jw.WritePropertyName("midX"); jw.WriteValue(edge.MidX);
@@ -725,6 +729,7 @@ namespace TsMap.Routing
                 SourceUid = road.Uid.ToString("X"),
                 Lane = lane,
                 SpeedClass = speedClass,
+                IsSecret = road.IsSecret,
                 Direction = forward ? "start-to-end" : "end-to-start",
                 TrafficSide = isTemporaryLeftHandTrafficRoad ? "temporary-left-hand" : "right-hand",
                 IsTemporaryLeftHandTrafficRoad = isTemporaryLeftHandTrafficRoad,
@@ -794,6 +799,7 @@ namespace TsMap.Routing
                                 SourceUid = prefab.Uid.ToString("X"),
                                 Lane = lane,
                                 SpeedClass = "local_road",
+                                IsSecret = prefab.IsSecret,
                                 Path = path,
                             };
                             _edges.Add(edge);
@@ -1011,6 +1017,7 @@ namespace TsMap.Routing
                     SourceUid = from.Edge.SourceUid,
                     Lane = from.Edge.Lane + " -> " + to.Edge.Lane + $" ({match.Distance:0.0}m, dot {match.Dot:0.00})",
                     SpeedClass = from.Edge.SpeedClass ?? to.Edge.SpeedClass ?? "local_road",
+                    IsSecret = from.Edge.IsSecret || to.Edge.IsSecret,
                     Path = new[] { new[] { from.X, from.Z }, new[] { to.X, to.Z } },
                 });
                 snapped++;
@@ -1073,6 +1080,7 @@ namespace TsMap.Routing
                     SourceUid = match.Road.Edge.SourceUid,
                     Lane = match.Road.Edge.Lane + " -> " + match.Prefab.Edge.Lane + $" ({match.Distance:0.0}m, dot {match.Dot:0.00})",
                     SpeedClass = "local_road",
+                    IsSecret = match.Road.Edge.IsSecret || match.Prefab.Edge.IsSecret,
                     Path = new[] { new[] { match.Road.X, match.Road.Z }, new[] { match.Prefab.X, match.Prefab.Z } },
                 });
                 snapped++;
@@ -1161,6 +1169,7 @@ namespace TsMap.Routing
                     SourceUid = roadEndpoint.Edge.SourceUid,
                     Lane = roadEndpoint.Edge.Lane + " -> " + best.Edge.Lane + $" ({match.Distance:0.0}m, dot {match.Dot:0.00})",
                     SpeedClass = "local_road",
+                    IsSecret = roadEndpoint.Edge.IsSecret || best.Edge.IsSecret,
                     Path = path,
                 });
                 snapped++;
@@ -2006,6 +2015,7 @@ namespace TsMap.Routing
             public string SourceUid;
             public string Lane;
             public string SpeedClass;
+            public bool IsSecret;
             public string Direction;
             public string TrafficSide;
             public bool IsTemporaryLeftHandTrafficRoad;
@@ -2167,6 +2177,7 @@ namespace TsMap.Routing
             public string SourceUid;
             public string Lane;
             public string SpeedClass;
+            public bool IsSecret;
             public float[][] Path;
         }
     }

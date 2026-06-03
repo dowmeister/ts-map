@@ -24,13 +24,14 @@ export function findNearestMainComponent(
   z: number,
   spatialIndex: SpatialIndex,
   isInMain: (uid: string) => boolean,
+  isRoutable: (uid: string) => boolean = () => true,
 ): string | undefined {
   const nearest = spatialIndex.findNearest(x, z);
-  if (nearest && isInMain(nearest.uid)) return nearest.uid;
+  if (nearest && isInMain(nearest.uid) && isRoutable(nearest.uid)) return nearest.uid;
 
   // Snap landed on isolated node — widen search
   const candidates = spatialIndex.findCandidates(x, z, 5)
-    .filter(c => isInMain(c.uid));
+    .filter(c => isInMain(c.uid) && isRoutable(c.uid));
   if (candidates.length === 0) return undefined;
 
   let bestUid: string | undefined;

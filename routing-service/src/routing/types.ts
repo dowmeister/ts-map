@@ -12,6 +12,9 @@ export interface GraphEdge {
   speedClass: string;
   speedLimitKph?: number;
   itemType: string;
+  ferryTimeMinutes?: number;
+  ferryDistanceKm?: number;
+  ferryPrice?: number;
 }
 
 export interface RoutingGraph {

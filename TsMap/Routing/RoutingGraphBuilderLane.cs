@@ -11,6 +11,8 @@ namespace TsMap.Routing
         private const float MaxSpeedKph = 130f;
         private const float FerryWeight = 50000f;
 
+        private float FerryDisplayScale => _mapper.IsEts2 ? 19f : 20f;
+
         private static float SpeedMult(string speedClass) =>
             MaxSpeedKph / GraphEdge.SpeedClassToKph(speedClass);
 
@@ -92,22 +94,21 @@ namespace TsMap.Routing
                 string portUid = FerryPortNodeUid(kv.Value);
                 graph.Nodes[portUid] = new LaneRoutingNode(portUid, portNode.X, portNode.Z);
 
-                var exitNode = routingNodeIndex.FindNearest(portNode.X, portNode.Z, n => outgoingNodes.Contains(n.Uid));
-                if (exitNode != null)
+                foreach (var exitNode in routingNodeIndex.FindNearestMany(portNode.X, portNode.Z, 4, 250f, n => outgoingNodes.Contains(n.Uid)))
                 {
-                    AddApproachEdge(graph, portUid, exitNode.Uid, "ferry_approach");
-                    Increment(edgeTypeCounts, "ferry_approach");
+                    if (AddApproachEdge(graph, portUid, exitNode.Uid, "ferry_approach"))
+                        Increment(edgeTypeCounts, "ferry_approach");
                 }
 
-                var entryNode = routingNodeIndex.FindNearest(portNode.X, portNode.Z, n => incomingNodes.Contains(n.Uid));
-                if (entryNode != null)
+                foreach (var entryNode in routingNodeIndex.FindNearestMany(portNode.X, portNode.Z, 4, 250f, n => incomingNodes.Contains(n.Uid)))
                 {
-                    AddApproachEdge(graph, entryNode.Uid, portUid, "ferry_approach");
-                    Increment(edgeTypeCounts, "ferry_approach");
+                    if (AddApproachEdge(graph, entryNode.Uid, portUid, "ferry_approach"))
+                        Increment(edgeTypeCounts, "ferry_approach");
                 }
             }
 
             var seen = new HashSet<string>();
+            var terminalLinks = new HashSet<string>();
             foreach (var ferry in _mapper.FerryConnections)
             {
                 var connections = _mapper.LookupFerryConnection(ferry.FerryPortId);
@@ -117,9 +118,14 @@ namespace TsMap.Routing
                     if (!portToNodeUid.TryGetValue(conn.EndPortToken, out var endRawUid)) continue;
                     if (startRawUid == endRawUid) continue;
 
-                    string startUid = FerryPortNodeUid(startRawUid);
-                    string endUid = FerryPortNodeUid(endRawUid);
-                    if (!graph.Nodes.ContainsKey(startUid) || !graph.Nodes.ContainsKey(endUid)) continue;
+                    string startPortUid = FerryPortNodeUid(startRawUid);
+                    string endPortUid = FerryPortNodeUid(endRawUid);
+                    if (!graph.Nodes.ContainsKey(startPortUid) || !graph.Nodes.ContainsKey(endPortUid)) continue;
+
+                    string startUid = EnsureFerryTerminalNode(graph, conn.StartPortToken, conn.StartPortLocation.X, conn.StartPortLocation.Y);
+                    string endUid = EnsureFerryTerminalNode(graph, conn.EndPortToken, conn.EndPortLocation.X, conn.EndPortLocation.Y);
+                    AddFerryTerminalLink(graph, startPortUid, startUid, terminalLinks, edgeTypeCounts);
+                    AddFerryTerminalLink(graph, endPortUid, endUid, terminalLinks, edgeTypeCounts);
 
                     string key = string.CompareOrdinal(startUid, endUid) < 0
                         ? startUid + "\n" + endUid
@@ -128,13 +134,24 @@ namespace TsMap.Routing
 
                     float dx = conn.EndPortLocation.X - conn.StartPortLocation.X;
                     float dz = conn.EndPortLocation.Y - conn.StartPortLocation.Y;
-                    float dist = (float)Math.Sqrt(dx * dx + dz * dz);
-                    if (dist < 1f) dist = FerryWeight;
+                    float geometryDist = (float)Math.Sqrt(dx * dx + dz * dz);
+                    if (geometryDist < 1f) geometryDist = FerryWeight;
+
+                    float length = conn.DistanceKm > 0
+                        ? conn.DistanceKm * 1000f / FerryDisplayScale
+                        : geometryDist;
+                    float weight = conn.TimeMinutes > 0
+                        ? (conn.TimeMinutes / 60f) * MaxSpeedKph * 1000f / FerryDisplayScale
+                        : FerryWeight;
 
                     var fwdWp = BuildFerryWaypoints(conn);
                     var bwdWp = ReversePath(fwdWp);
-                    graph.Edges.Add(new LaneRoutingEdge(startUid, endUid, FerryWeight, dist, "ferry", "ferry", fwdWp));
-                    graph.Edges.Add(new LaneRoutingEdge(endUid, startUid, FerryWeight, dist, "ferry", "ferry", bwdWp));
+                    graph.Edges.Add(new LaneRoutingEdge(
+                        startUid, endUid, weight, length, "ferry", "ferry", fwdWp,
+                        conn.TimeMinutes, conn.DistanceKm, conn.Price));
+                    graph.Edges.Add(new LaneRoutingEdge(
+                        endUid, startUid, weight, length, "ferry", "ferry", bwdWp,
+                        conn.TimeMinutes, conn.DistanceKm, conn.Price));
                     Increment(edgeTypeCounts, "ferry", 2);
                 }
             }
@@ -162,15 +179,15 @@ namespace TsMap.Routing
                     var exitNode = routingNodeIndex.FindNearest(companyNode.X, companyNode.Z, n => outgoingNodes.Contains(n.Uid));
                     if (exitNode != null)
                     {
-                        AddApproachEdge(graph, companyUid, exitNode.Uid, "company_approach");
-                        Increment(edgeTypeCounts, "company_approach");
+                        if (AddApproachEdge(graph, companyUid, exitNode.Uid, "company_approach"))
+                            Increment(edgeTypeCounts, "company_approach");
                     }
 
                     var entryNode = routingNodeIndex.FindNearest(companyNode.X, companyNode.Z, n => incomingNodes.Contains(n.Uid));
                     if (entryNode != null)
                     {
-                        AddApproachEdge(graph, entryNode.Uid, companyUid, "company_approach");
-                        Increment(edgeTypeCounts, "company_approach");
+                        if (AddApproachEdge(graph, entryNode.Uid, companyUid, "company_approach"))
+                            Increment(edgeTypeCounts, "company_approach");
                     }
                 }
             }
@@ -192,23 +209,49 @@ namespace TsMap.Routing
             return result;
         }
 
-        private static void AddApproachEdge(LaneRoutingGraph graph, string fromUid, string toUid, string itemType)
+        private static bool AddApproachEdge(LaneRoutingGraph graph, string fromUid, string toUid, string itemType)
         {
-            if (!graph.Nodes.TryGetValue(fromUid, out var from)) return;
-            if (!graph.Nodes.TryGetValue(toUid, out var to)) return;
+            if (!graph.Nodes.TryGetValue(fromUid, out var from)) return false;
+            if (!graph.Nodes.TryGetValue(toUid, out var to)) return false;
 
             float dx = to.X - from.X;
             float dz = to.Z - from.Z;
             float len = (float)Math.Sqrt(dx * dx + dz * dz);
-            if (len < 0.001f) return;
+            if (len < 0.001f) return false;
 
             var path = new[] { new[] { from.X, from.Z }, new[] { to.X, to.Z } };
             float weight = len * SpeedMult("local_road");
             graph.Edges.Add(new LaneRoutingEdge(fromUid, toUid, weight, len, "local_road", itemType, path));
+            return true;
         }
 
         private static string CompanyNodeUid(ulong rawUid) => "company:" + rawUid.ToString("X");
         private static string FerryPortNodeUid(ulong rawUid) => "ferry_port:" + rawUid.ToString("X");
+        private static string FerryTerminalNodeUid(ulong ferryPortToken) => "ferry_terminal:" + ferryPortToken.ToString("X");
+
+        private static string EnsureFerryTerminalNode(LaneRoutingGraph graph, ulong ferryPortToken, float x, float z)
+        {
+            string uid = FerryTerminalNodeUid(ferryPortToken);
+            if (!graph.Nodes.ContainsKey(uid))
+                graph.Nodes[uid] = new LaneRoutingNode(uid, x, z);
+            return uid;
+        }
+
+        private static void AddFerryTerminalLink(
+            LaneRoutingGraph graph,
+            string portUid,
+            string terminalUid,
+            HashSet<string> terminalLinks,
+            Dictionary<string, int> edgeTypeCounts)
+        {
+            string key = portUid + "\n" + terminalUid;
+            if (!terminalLinks.Add(key)) return;
+
+            int added = 0;
+            if (AddApproachEdge(graph, portUid, terminalUid, "ferry_approach")) added++;
+            if (AddApproachEdge(graph, terminalUid, portUid, "ferry_approach")) added++;
+            if (added > 0) Increment(edgeTypeCounts, "ferry_approach", added);
+        }
 
         private static bool IsZeroNode(TsNode node) =>
             Math.Abs(node.X) < 0.001f && Math.Abs(node.Z) < 0.001f;
@@ -224,6 +267,7 @@ namespace TsMap.Routing
             foreach (var edge in snapshot.Edges)
             {
                 if (edge.Kind != "road") continue;
+                if (edge.IsSecret) continue;
                 if (!TryParseRoadLane(edge.Lane, out var side, out _)) continue;
                 bool forward = edge.From.EndsWith(":start", StringComparison.Ordinal) &&
                                edge.To.EndsWith(":end", StringComparison.Ordinal);
@@ -436,6 +480,54 @@ namespace TsMap.Routing
                 return best;
             }
 
+            public List<LaneRoutingNode> FindNearestMany(
+                float x,
+                float z,
+                int maxCount,
+                float maxDistance,
+                Func<LaneRoutingNode, bool> predicate = null)
+            {
+                var center = CellKey(x, z);
+                var candidates = new List<Tuple<float, LaneRoutingNode>>();
+                float maxDSq = maxDistance * maxDistance;
+
+                for (int radius = 0; radius <= 8; radius++)
+                {
+                    for (int dx = -radius; dx <= radius; dx++)
+                    {
+                        for (int dz = -radius; dz <= radius; dz++)
+                        {
+                            if (Math.Abs(dx) != radius && Math.Abs(dz) != radius) continue;
+                            var key = Tuple.Create(center.Item1 + dx, center.Item2 + dz);
+                            if (!_cells.TryGetValue(key, out var list)) continue;
+                            foreach (var node in list)
+                            {
+                                if (predicate != null && !predicate(node)) continue;
+                                float ndx = node.X - x;
+                                float ndz = node.Z - z;
+                                float dSq = ndx * ndx + ndz * ndz;
+                                if (dSq <= maxDSq)
+                                    candidates.Add(Tuple.Create(dSq, node));
+                            }
+                        }
+                    }
+
+                    if ((radius + 1) * CellSize > maxDistance)
+                        break;
+                }
+
+                candidates.Sort((a, b) => a.Item1.CompareTo(b.Item1));
+                var result = new List<LaneRoutingNode>();
+                var seen = new HashSet<string>();
+                foreach (var candidate in candidates)
+                {
+                    if (!seen.Add(candidate.Item2.Uid)) continue;
+                    result.Add(candidate.Item2);
+                    if (result.Count >= maxCount) break;
+                }
+                return result;
+            }
+
             private static Tuple<int, int> CellKey(float x, float z)
             {
                 return Tuple.Create(
@@ -446,6 +538,8 @@ namespace TsMap.Routing
 
         private static bool IsRoutableEdge(LaneGraphDebugExporter.SnapshotEdge edge)
         {
+            if (edge.IsSecret) return false;
+
             switch (edge.Kind)
             {
                 case "road":
