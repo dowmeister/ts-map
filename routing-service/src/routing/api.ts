@@ -4,9 +4,9 @@ import { Router, Request, Response } from 'express';
 import { loadGraph, loadMapBounds } from './loader';
 import { setGraphState, getAvailableGames } from './state';
 import { graphDebugHandler, laneGraphDebugHandler, laneGraphIssuesHandler, loadSelectedEdgePaths } from './debug';
-import { MainComponentIndex } from './component';
+import { DirectedComponentIndex, MainComponentIndex } from './component';
 import { SpatialIndex } from './spatial-index';
-import { findNearestMainComponent, findNearestWithHeading } from './nearest';
+import { findNearestMainComponent, findNearestReachableMainComponent, findNearestWithHeading } from './nearest';
 import { findRoute } from './astar';
 import { ets2ToWgs84, wgs84ToGame, routeToGeoJson } from './coordinates';
 import type { GraphEdge, LoadedGraph } from './types';
@@ -16,6 +16,7 @@ import type { GraphEdge, LoadedGraph } from './types';
 interface GameRuntime {
   loadedGraph: LoadedGraph;
   componentIndex: MainComponentIndex;
+  directedComponentIndex: DirectedComponentIndex;
   spatialIndex: SpatialIndex;
   outgoingNodes: Set<string>;
   incomingNodes: Set<string>;
@@ -65,9 +66,14 @@ function loadGame(mapDataPath: string, game: string): void {
 
   const t2 = Date.now();
   const componentIndex = new MainComponentIndex();
-  componentIndex.build(loadedGraph.nodes, Object.values(loadedGraph.adjacency).flat());
+  componentIndex.build(loadedGraph.nodes, loadedGraph.adjacency);
   const mainPct = (componentIndex.mainSize / loadedGraph.nodeCount * 100).toFixed(2);
   console.log(`[Routing:${game}] Main component: ${componentIndex.mainSize} nodes (${mainPct}%) in ${Date.now()-t2}ms`);
+
+  const t2b = Date.now();
+  const directedComponentIndex = new DirectedComponentIndex();
+  directedComponentIndex.build(loadedGraph.nodes, loadedGraph.adjacency);
+  console.log(`[Routing:${game}] Directed components: ${directedComponentIndex.componentCount} (largest ${directedComponentIndex.largestComponentSize}) in ${Date.now()-t2b}ms`);
 
   const t3 = Date.now();
   const spatialIndex = new SpatialIndex(loadedGraph.nodes, loadedGraph.bounds);
@@ -85,7 +91,7 @@ function loadGame(mapDataPath: string, game: string): void {
   const [parisLon, parisLat] = ets2ToWgs84(-22674, -16800, loadedGraph.bounds);
   console.log(`[Routing:${game}] WGS84 check (-22674,-16800): lon=${parisLon.toFixed(2)} lat=${parisLat.toFixed(2)}`);
 
-  runtimes[game] = { loadedGraph, componentIndex, spatialIndex, outgoingNodes, incomingNodes };
+  runtimes[game] = { loadedGraph, componentIndex, directedComponentIndex, spatialIndex, outgoingNodes, incomingNodes };
   setGraphState(game, { graph: loadedGraph, spatialIndex });
   console.log(`[Routing:${game}] Ready`);
 }
@@ -213,7 +219,7 @@ router.get('/route', async (req: Request, res: Response) => {
     return;
   }
 
-  const { loadedGraph, componentIndex, spatialIndex, outgoingNodes, incomingNodes } = rt;
+  const { loadedGraph, componentIndex, directedComponentIndex, spatialIndex, outgoingNodes, incomingNodes } = rt;
   const { minX, maxX, minZ, maxZ } = loadedGraph.bounds;
   const isInMain = (uid: string) => componentIndex.isInMainComponent(uid);
   const canDepart = (uid: string) => outgoingNodes.has(uid);
@@ -247,7 +253,17 @@ router.get('/route', async (req: Request, res: Response) => {
   }
 
   const goalSnapT0 = Date.now();
-  const goalUid = findNearestMainComponent(tx, tz, spatialIndex, isInMain, canArrive);
+  const startComponent = directedComponentIndex.componentOf(startUid);
+  const goalUid = startComponent == null
+    ? undefined
+    : findNearestReachableMainComponent(
+        tx,
+        tz,
+        spatialIndex,
+        isInMain,
+        canArrive,
+        uid => directedComponentIndex.canReachComponent(startComponent, uid),
+      );
   const goalSnapMs = Date.now() - goalSnapT0;
   if (!goalUid) {
     logRoute(`[Route:${game}] rejected: destination not connected start=${startUid} snapMs=${snapMs} goalSnapMs=${goalSnapMs}`);

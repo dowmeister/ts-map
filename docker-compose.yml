@@ -26,6 +26,8 @@ services:
     environment:
       MAP_DATA_PATH: /data
       PORT: 3001
+      # Raise V8 heap limit; all routing graphs are loaded at startup.
+      NODE_OPTIONS: ${ROUTING_NODE_OPTIONS:---max-old-space-size=8192}
     restart: unless-stopped
 
   # React app server

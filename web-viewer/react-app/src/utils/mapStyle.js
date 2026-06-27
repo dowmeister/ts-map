@@ -401,7 +401,7 @@ export function createMapStyle(game, mapInfo = null) {
         type: "fill",
         source: "map",
         "source-layer": "roads",
-        filter: ["!=", ["get", "is_secret"], true],
+        filter: ["!=", "is_secret", true],
         paint: {
           "fill-color": _ROAD_COLOR,
           "fill-opacity": 1.0,
@@ -413,7 +413,7 @@ export function createMapStyle(game, mapInfo = null) {
         type: "line",
         source: "map",
         "source-layer": "roads",
-        filter: ["==", ["get", "is_secret"], true],
+        filter: ["==", "is_secret", true],
         layout: {
           "line-cap": "round",
           "line-join": "round",
@@ -430,7 +430,7 @@ export function createMapStyle(game, mapInfo = null) {
         type: "fill",
         source: "map",
         "source-layer": "prefab_roads",
-        filter: ["!=", ["get", "is_secret"], true],
+        filter: ["!=", "is_secret", true],
         paint: {
           "fill-color": _ROAD_COLOR,
           "fill-opacity": 1.0,
@@ -442,7 +442,7 @@ export function createMapStyle(game, mapInfo = null) {
         type: "line",
         source: "map",
         "source-layer": "prefab_roads",
-        filter: ["==", ["get", "is_secret"], true],
+        filter: ["==", "is_secret", true],
         layout: {
           "line-cap": "round",
           "line-join": "round",
@@ -651,7 +651,12 @@ export function createMapStyle(game, mapInfo = null) {
         id: "route-line",
         type: "line",
         source: "route",
-        filter: ["==", "$type", "LineString"],
+        filter: [
+          "all",
+          ["==", "$type", "LineString"],
+          ["!=", "featureType", "route_turn_line"],
+          ["!=", "featureType", "route_maneuver_line"],
+        ],
         layout: {
           "line-cap": "round",
           "line-join": "round",
@@ -670,6 +675,54 @@ export function createMapStyle(game, mapInfo = null) {
             5,
           ],
           "line-opacity": 0.92,
+        },
+      },
+      {
+        id: "route-maneuver-casing",
+        type: "line",
+        source: "route",
+        minzoom: 8,
+        filter: ["==", "featureType", "route_turn_line"],
+        layout: {
+          "line-cap": "round",
+          "line-join": "round",
+        },
+        paint: {
+          "line-color": "#0E1A24",
+          "line-width": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            8,
+            9,
+            12,
+            13,
+          ],
+          "line-opacity": 0.95,
+        },
+      },
+      {
+        id: "route-maneuver-lines",
+        type: "line",
+        source: "route",
+        minzoom: 8,
+        filter: ["==", "featureType", "route_turn_line"],
+        layout: {
+          "line-cap": "round",
+          "line-join": "round",
+        },
+        paint: {
+          "line-color": "#ffffff",
+          "line-width": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            8,
+            5,
+            12,
+            7.5,
+          ],
+          "line-opacity": 1,
         },
       },
       {
@@ -709,17 +762,17 @@ export function createMapStyle(game, mapInfo = null) {
         type: "symbol",
         source: "route",
         minzoom: 8,
-        filter: ["==", ["get", "featureType"], "route_maneuver"],
+        filter: ["==", "featureType", "route_maneuver"],
         layout: {
-          "icon-image": "route-maneuver-arrow",
+          "icon-image": "route-arrow",
           "icon-size": [
             "interpolate",
             ["linear"],
             ["zoom"],
             8,
-            0.65,
+            0.85,
             12,
-            1.05,
+            1.3,
           ],
           "icon-rotate": ["get", "bearing"],
           "icon-rotation-alignment": "map",
@@ -727,25 +780,17 @@ export function createMapStyle(game, mapInfo = null) {
           "icon-ignore-placement": true,
         },
         paint: {
-          "icon-color": [
-            "match",
-            ["get", "maneuver"],
-            "left",
-            "#8AF3FF",
-            "right",
-            "#8AF3FF",
-            "#8AF3FF",
-          ],
-          "icon-halo-color": "#083748",
+          "icon-color": "#ffffff",
+          "icon-halo-color": "#0E1A24",
           "icon-halo-width": 2,
           "icon-opacity": [
             "interpolate",
             ["linear"],
             ["zoom"],
             8,
-            0.65,
+            0.85,
             10,
-            0.95,
+            1,
           ],
         },
       },
@@ -754,7 +799,7 @@ export function createMapStyle(game, mapInfo = null) {
         id: "graph-debug-edges",
         type: "line",
         source: "graph-debug",
-        filter: ["==", ["get", "featureType"], "edge"],
+        filter: ["==", "featureType", "edge"],
         layout: { visibility: "none" },
         paint: {
           "line-color": [
@@ -786,7 +831,7 @@ export function createMapStyle(game, mapInfo = null) {
         id: "graph-debug-arrows",
         type: "symbol",
         source: "graph-debug",
-        filter: ["==", ["get", "featureType"], "arrow"],
+        filter: ["==", "featureType", "arrow"],
         layout: {
           visibility: "none",
           "icon-image": "route-arrow",
@@ -816,7 +861,7 @@ export function createMapStyle(game, mapInfo = null) {
         id: "graph-debug-nodes",
         type: "circle",
         source: "graph-debug",
-        filter: ["==", ["get", "featureType"], "node"],
+        filter: ["==", "featureType", "node"],
         layout: { visibility: "none" },
         paint: {
           "circle-radius": ["interpolate", ["linear"], ["zoom"], 9, 1.5, 12, 4],
@@ -831,7 +876,7 @@ export function createMapStyle(game, mapInfo = null) {
         id: "lane-graph-debug-edges",
         type: "line",
         source: "lane-graph-debug",
-        filter: ["==", ["get", "featureType"], "edge"],
+        filter: ["==", "featureType", "edge"],
         paint: {
           "line-color": [
             "match",
@@ -878,7 +923,7 @@ export function createMapStyle(game, mapInfo = null) {
         id: "lane-graph-debug-arrows",
         type: "symbol",
         source: "lane-graph-debug",
-        filter: ["==", ["get", "featureType"], "arrow"],
+        filter: ["==", "featureType", "arrow"],
         layout: {
           "text-field": "▲",
           "text-rotate": ["get", "bearing"],
@@ -930,7 +975,7 @@ export function createMapStyle(game, mapInfo = null) {
         id: "lane-graph-debug-nodes",
         type: "circle",
         source: "lane-graph-debug",
-        filter: ["==", ["get", "featureType"], "node"],
+        filter: ["==", "featureType", "node"],
         paint: {
           "circle-radius": ["interpolate", ["linear"], ["zoom"], 9, 1.8, 12, 4.5],
           "circle-color": [
@@ -982,7 +1027,7 @@ export function createMapStyle(game, mapInfo = null) {
         id: "lane-graph-issues",
         type: "circle",
         source: "lane-graph-issues",
-        filter: ["==", ["get", "featureType"], "issue"],
+        filter: ["==", "featureType", "issue"],
         paint: {
           "circle-radius": ["interpolate", ["linear"], ["zoom"], 5, 3, 9, 6, 13, 10],
           "circle-color": [

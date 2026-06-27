@@ -1,26 +1,10 @@
 import { useEffect, useRef, useCallback } from 'react'
 import maplibregl from 'maplibre-gl'
 import { mapToGameCoords } from '../utils/coordinates'
+import { arrowOnLine, ensureRouteArrowImage } from '../utils/routeArrows'
 
 const ROUTING_BASE = import.meta.env.VITE_ROUTING_SERVICE_URL || 'http://localhost:3001'
 const DEBOUNCE_MS  = 350
-
-// Programmatically create a 12×12 triangle arrow icon for MapLibre.
-// Using SDF (Signed Distance Field) so icon-color paint works per-feature.
-function createArrowImageData(size = 12) {
-  const canvas = document.createElement('canvas')
-  canvas.width  = size
-  canvas.height = size
-  const ctx = canvas.getContext('2d')
-  ctx.fillStyle = '#ffffff'
-  ctx.beginPath()
-  ctx.moveTo(size / 2, 0)
-  ctx.lineTo(size,     size)
-  ctx.lineTo(0,        size)
-  ctx.closePath()
-  ctx.fill()
-  return ctx.getImageData(0, 0, size, size)
-}
 
 export function useDebugOverlay(mapInstance, tileMapInfo, graphEnabled, issuesEnabled, softIssuesEnabled = false) {
   const arrowLoadedRef  = useRef(false)
@@ -51,8 +35,7 @@ export function useDebugOverlay(mapInstance, tileMapInfo, graphEnabled, issuesEn
       arrowLoadedRef.current = true
       return
     }
-    const imageData = createArrowImageData(12)
-    map.addImage('route-arrow', imageData, { sdf: true })
+    ensureRouteArrowImage(map, 18)
     arrowLoadedRef.current = true
   }
 
@@ -294,41 +277,5 @@ function withLaneArrows(geojson) {
   return {
     ...geojson,
     features: [...nonArrowFeatures, ...arrows],
-  }
-}
-
-function arrowOnLine(coords, ratio) {
-  if (!coords || coords.length < 2) return null
-
-  let totalLen = 0
-  const segLens = []
-  for (let i = 1; i < coords.length; i++) {
-    const dl = Math.hypot(coords[i][0] - coords[i - 1][0], coords[i][1] - coords[i - 1][1])
-    segLens.push(dl)
-    totalLen += dl
-  }
-  if (totalLen < 1e-12) return null
-
-  const target = totalLen * ratio
-  let accumulated = 0
-  let segIdx = 0
-  for (let i = 0; i < segLens.length; i++) {
-    if (accumulated + segLens[i] >= target) {
-      segIdx = i
-      break
-    }
-    accumulated += segLens[i]
-  }
-
-  const t = segLens[segIdx] > 1e-12 ? (target - accumulated) / segLens[segIdx] : 0
-  const c0 = coords[segIdx]
-  const c1 = coords[segIdx + 1]
-  const dLon = c1[0] - c0[0]
-  const dLat = c1[1] - c0[1]
-
-  return {
-    lon: c0[0] + dLon * t,
-    lat: c0[1] + dLat * t,
-    bearing: (Math.atan2(dLon, dLat) * 180 / Math.PI + 360) % 360,
   }
 }

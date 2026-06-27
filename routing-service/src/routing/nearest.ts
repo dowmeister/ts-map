@@ -44,6 +44,39 @@ export function findNearestMainComponent(
   return bestUid;
 }
 
+export function findNearestReachableMainComponent(
+  x: number,
+  z: number,
+  spatialIndex: SpatialIndex,
+  isInMain: (uid: string) => boolean,
+  isRoutable: (uid: string) => boolean,
+  isReachable: (uid: string) => boolean,
+): string | undefined {
+  const seen = new Set<string>();
+
+  for (let radius = 1; radius <= 8; radius++) {
+    const candidates = spatialIndex.findCandidates(x, z, radius)
+      .filter(c => {
+        if (seen.has(c.uid)) return false;
+        seen.add(c.uid);
+        return isInMain(c.uid) && isRoutable(c.uid) && isReachable(c.uid);
+      });
+
+    if (candidates.length === 0) continue;
+
+    let bestUid: string | undefined;
+    let bestDSq = Infinity;
+    for (const c of candidates) {
+      const dx = c.x - x, dz = c.z - z;
+      const dSq = dx * dx + dz * dz;
+      if (dSq < bestDSq) { bestDSq = dSq; bestUid = c.uid; }
+    }
+    return bestUid;
+  }
+
+  return undefined;
+}
+
 // Heading-aware snap for start position on dual carriageways.
 // Scores candidates by both distance and alignment with truck heading direction.
 export function findNearestWithHeading(

@@ -1,21 +1,19 @@
 {
   "mods": [
-    "cnx-pm-eu-v281-ma-v101.scs",
-    "promods-ma-defmap-v101.scs",
-    "promods-ma-assets-v101.scs",
-    "promods-ma-models-v101.scs",
-    "promods-tgs-defmap-v160.scs",
-    "promods-tgs-assets-v160.scs",
-    "promods-me-defmap-v281.scs",
-    "promods-me-assets-v281.scs",
-    "promods-eu-def-v282.scs",
-    "promods-eu-map-v282.scs",
-    "promods-eu-assets-v282.scs",
-    "promods-eu-model1-v282.scs",
-    "promods-eu-model2-v282.scs",
-    "promods-eu-model3-v282.scs",
-    "promods-eu-media-v282.scs",
-    "promods-tgs-defmap-v160.scs",
-    "promods-tgs-assets-v160.scs"
+    "cnx-pm-eu-v283-ma-v103.scs",
+    "promods-ma-defmap-v103.scs",
+    "promods-ma-assets-v103.scs",
+    "promods-ma-models-v103.scs",
+    "promods-me-defmap-v283.scs",
+    "promods-me-assets-v283.scs",
+    "promods-eu-def-v283.scs",
+    "promods-eu-map-v283.scs",
+    "promods-eu-assets-v283.scs",
+    "promods-eu-model1-v283.scs",
+    "promods-eu-model2-v283.scs",
+    "promods-eu-model3-v283.scs",
+    "promods-eu-media-v283.scs",
+    "promods-tgs-defmap-v162.scs",
+    "promods-tgs-assets-v162.scs"
   ]
 }

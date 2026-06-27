@@ -5,8 +5,9 @@
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/server.js",
-    "dev": "ts-node src/server.ts"
+    "start": "node --max-old-space-size=8192 dist/server.js",
+    "dev": "node --max-old-space-size=8192 -r ts-node/register src/server.ts",
+    "debug:routes": "ts-node src/debug-routes.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",

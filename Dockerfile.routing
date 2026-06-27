@@ -24,5 +24,9 @@ EXPOSE 3001
 
 ENV MAP_DATA_PATH=/data
 ENV PORT=3001
+# All games' routing graphs are loaded into memory at startup (ETS2 + ProMods
+# alone are ~700MB of raw JSON, several GB once parsed). Node's default
+# old-space limit (~2GB) is not enough — raise it. Override via NODE_OPTIONS.
+ENV NODE_OPTIONS=--max-old-space-size=8192
 
 CMD ["node", "dist/server.js"]

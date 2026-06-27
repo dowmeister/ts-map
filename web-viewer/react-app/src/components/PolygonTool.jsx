@@ -59,7 +59,7 @@ function buildGeoJson(points, closed) {
 }
 
 function addPolygonLayers(map) {
-  if (!map || !map.isStyleLoaded()) return
+  if (!canUseMapStyle(map)) return
 
   if (!map.getSource(SOURCE_ID)) {
     map.addSource(SOURCE_ID, {
@@ -113,17 +113,25 @@ function addPolygonLayers(map) {
 }
 
 function removePolygonLayers(map) {
-  if (!map) return
+  if (!canUseMapStyle(map)) return
 
-  for (const layerId of [POINT_LAYER_ID, LINE_LAYER_ID, FILL_LAYER_ID]) {
-    if (map.getLayer(layerId)) {
-      map.removeLayer(layerId)
+  try {
+    for (const layerId of [POINT_LAYER_ID, LINE_LAYER_ID, FILL_LAYER_ID]) {
+      if (map.getLayer(layerId)) {
+        map.removeLayer(layerId)
+      }
     }
-  }
 
-  if (map.getSource(SOURCE_ID)) {
-    map.removeSource(SOURCE_ID)
+    if (map.getSource(SOURCE_ID)) {
+      map.removeSource(SOURCE_ID)
+    }
+  } catch {
+    // MapLibre may clear its internal style during hot reload/unmount.
   }
+}
+
+function canUseMapStyle(map) {
+  return !!map && !!map.style && map.isStyleLoaded()
 }
 
 function formatNumber(value) {
@@ -160,7 +168,7 @@ function PolygonTool({ mapInstance, tileMapInfo }) {
   }), [points])
 
   const updateSource = useCallback(() => {
-    if (!mapInstance || !mapInstance.isStyleLoaded()) return
+    if (!canUseMapStyle(mapInstance)) return
     addPolygonLayers(mapInstance)
     const source = mapInstance.getSource(SOURCE_ID)
     if (source) {
@@ -180,6 +188,7 @@ function PolygonTool({ mapInstance, tileMapInfo }) {
     mapInstance.on('styledata', onStyleReady)
 
     return () => {
+      mapInstance.off('load', onStyleReady)
       mapInstance.off('styledata', onStyleReady)
       removePolygonLayers(mapInstance)
     }
