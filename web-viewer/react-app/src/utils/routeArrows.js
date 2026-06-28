@@ -71,6 +71,85 @@ export function arrowOnLine(coords, ratio = 0.7) {
   }
 }
 
+// Maneuver types that should get an on-map arrow (depart/arrive/via do not).
+const ARROW_MANEUVER_TYPES = new Set(['turn', 'exit', 'merge', 'ferry', 'ferry-exit'])
+
+/**
+ * Entry point used by the route source builder. When the routing service
+ * supplies semantic maneuvers (turns, highway exits, on-ramps, ferries) the
+ * arrows are anchored to them; otherwise we fall back to the purely geometric
+ * detection so the feature still works without backend support.
+ */
+export function buildRouteArrowFeatures(legs, tileMapInfo, options = {}) {
+  const hasManeuvers = legs.some(l => Array.isArray(l.maneuvers) && l.maneuvers.length)
+  return hasManeuvers
+    ? buildManeuverArrowFeatures(legs, tileMapInfo, options)
+    : buildRouteManeuverFeatures(legs, tileMapInfo, options)
+}
+
+function buildManeuverArrowFeatures(legs, tileMapInfo, options = {}) {
+  const { backArm = 15, frontArm = 32 } = options
+  const features = []
+
+  for (const [legIndex, leg] of legs.entries()) {
+    const coords = leg.geometry?.coordinates || []
+    const points = routePoints(coords, tileMapInfo)
+    if (points.length < 2) continue
+    const maneuvers = leg.maneuvers || []
+
+    for (const m of maneuvers) {
+      if (!ARROW_MANEUVER_TYPES.has(m.type)) continue
+      const i = nearestPointIndex(points, m.x, m.z)
+      if (i == null) continue
+
+      const armEnd = pointAfter(points, i, frontArm) || points[Math.min(points.length - 1, i + 1)]
+      const armStart = pointBefore(points, i, backArm) || points[Math.max(0, i - 1)]
+      const maneuverCoords = routeSlice(points, armStart.index, armEnd.index)
+      if (maneuverCoords.length < 2) continue
+
+      const exitFrom = pointBefore(points, armEnd.index, 16) || points[Math.max(0, armEnd.index - 1)]
+      const side = m.modifier && m.modifier.includes('left') ? 'left' : 'right'
+
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: maneuverCoords },
+        properties: {
+          featureType: 'route_turn_line',
+          maneuver: side,
+          maneuverType: m.type,
+          legIndex,
+        },
+      })
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: armEnd.coord },
+        properties: {
+          featureType: 'route_maneuver',
+          maneuver: side,
+          maneuverType: m.type,
+          bearing: mapBearingDegrees(exitFrom.coord, armEnd.coord),
+          legIndex,
+        },
+      })
+    }
+  }
+
+  return features
+}
+
+function nearestPointIndex(points, gameX, gameZ) {
+  let bestIndex = null
+  let bestDist = Infinity
+  for (const p of points) {
+    const d = Math.hypot(p.game[0] - gameX, p.game[1] - gameZ)
+    if (d < bestDist) {
+      bestDist = d
+      bestIndex = p.index
+    }
+  }
+  return bestIndex
+}
+
 export function buildRouteManeuverFeatures(legs, tileMapInfo, options = {}) {
   const {
     // Window (game units) on each side of a vertex used to measure how hard the

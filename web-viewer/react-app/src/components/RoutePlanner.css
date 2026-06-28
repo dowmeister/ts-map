@@ -291,3 +291,64 @@
   text-align: center;
   padding: 1px 0;
 }
+
+/* ── Turn-by-turn steps ──────────────────────────────────────────────────── */
+.rp-steps {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  border-top: 1px solid #333;
+}
+
+.rp-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.rp-step:hover { background: rgba(0, 212, 255, 0.08); }
+
+.rp-step-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #E8EEF2;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.rp-step--exit .rp-step-icon,
+.rp-step--merge .rp-step-icon { background: rgba(0, 212, 255, 0.18); color: #00D4FF; }
+.rp-step--ferry .rp-step-icon,
+.rp-step--ferry-exit .rp-step-icon { background: rgba(126, 184, 232, 0.2); color: #7EB8E8; }
+.rp-step--depart .rp-step-icon { background: rgba(0, 230, 118, 0.2); color: #00E676; }
+.rp-step--arrive .rp-step-icon { background: rgba(255, 68, 68, 0.2); color: #FF6B6B; }
+.rp-step--via .rp-step-icon    { background: rgba(255, 153, 0, 0.2); color: #FF9900; }
+
+.rp-step-text {
+  flex: 1;
+  min-width: 0;
+  color: #ddd;
+  font-family: monospace;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.rp-step-dist {
+  flex-shrink: 0;
+  color: #888;
+  font-family: monospace;
+  font-size: 10px;
+}
+

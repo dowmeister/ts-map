@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { gameToMapCoords } from '../utils/coordinates'
-import { buildRouteManeuverFeatures, ensureRouteArrowImage } from '../utils/routeArrows'
+import { buildRouteArrowFeatures, ensureRouteArrowImage } from '../utils/routeArrows'
 
 const ROUTING_BASE = import.meta.env.VITE_ROUTING_SERVICE_URL || 'http://localhost:3001'
 
@@ -8,12 +8,40 @@ const ROUTING_BASE = import.meta.env.VITE_ROUTING_SERVICE_URL || 'http://localho
 
 const VIA_COLORS = ['#E67E22', '#8E44AD', '#2980B9', '#16A085', '#D35400', '#1A5276', '#7D6608']
 
+// Combine per-leg maneuver lists into a single route-wide list: keep `depart`
+// only for the first leg and `arrive` only for the last, turn intermediate
+// boundaries into `via` stops, and make distances cumulative across legs.
+function mergeLegManeuvers(legs) {
+  const out = []
+  let offset = 0
+  legs.forEach((leg, li) => {
+    const list = leg.maneuvers || []
+    const isFirst = li === 0
+    const isLast = li === legs.length - 1
+    const legTotal = list.length ? list[list.length - 1].distanceFromStartM : 0
+    for (const m of list) {
+      if (m.type === 'depart' && !isFirst) continue
+      if (m.type === 'arrive' && !isLast) {
+        out.push({ ...m, type: 'via', distanceFromStartM: offset + m.distanceFromStartM })
+        continue
+      }
+      out.push({ ...m, distanceFromStartM: offset + m.distanceFromStartM })
+    }
+    offset += legTotal
+  })
+  for (let i = 1; i < out.length; i++) {
+    out[i].distanceFromPrevM = Math.max(0, out[i].distanceFromStartM - out[i - 1].distanceFromStartM)
+  }
+  return out
+}
+
+
 function buildRouteSource(legs, waypoints, stops, tileMapInfo) {
   const features = []
   for (const leg of legs)
     features.push({ type: 'Feature', geometry: leg.geometry, properties: { featureType: 'route_line' } })
 
-  features.push(...buildRouteManeuverFeatures(legs, tileMapInfo))
+  features.push(...buildRouteArrowFeatures(legs, tileMapInfo))
 
   let viaIdx = 0
   waypoints.forEach((wp, i) => {
@@ -133,7 +161,7 @@ export function useRoute(mapInstance, tileMapInfo) {
           throw new Error(body.error || `Leg ${i + 1}: route not found (${res.status})`)
         }
         const data = await res.json()
-        legs.push({ geometry: data.route.geometry, length: data.totalLength })
+        legs.push({ geometry: data.route.geometry, length: data.totalLength, maneuvers: data.maneuvers || [] })
         totalLengthKm += data.totalLengthKm
         landLengthKm  += data.landLengthKm
         ferryLengthKm += data.ferryLengthKm
@@ -143,7 +171,7 @@ export function useRoute(mapInstance, tileMapInfo) {
       routeDataRef.current = geojson
       ensureRouteArrowImage(mapInstance)
       mapInstance.getSource('route')?.setData(geojson)
-      setRouteInfo({ totalLengthKm, landLengthKm, ferryLengthKm, legs: legs.length })
+      setRouteInfo({ totalLengthKm, landLengthKm, ferryLengthKm, legs: legs.length, maneuvers: mergeLegManeuvers(legs) })
 
       // Fit map to route bounds
       let minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity

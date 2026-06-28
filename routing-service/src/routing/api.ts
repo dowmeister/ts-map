@@ -10,6 +10,7 @@ import { SpatialIndex } from './spatial-index';
 import { findNearestMainComponent, findNearestReachableMainComponent, findNearestWithHeading } from './nearest';
 import { findRoute } from './astar';
 import { ets2ToWgs84, wgs84ToGame, routeToGeoJson } from './coordinates';
+import { buildManeuvers } from './maneuvers';
 import type { GraphEdge, LoadedGraph } from './types';
 
 // ── Per-game runtime state (routing-specific, not shared with debug) ──────────
@@ -343,6 +344,14 @@ router.get('/route', async (req: Request, res: Response) => {
   const geoT0 = Date.now();
   const geoJson = routeToGeoJson(result, loadedGraph.nodes, loadedGraph.bounds, edgePaths);
   const geoMs = Date.now() - geoT0;
+  const maneuvers = buildManeuvers(
+    result,
+    loadedGraph.nodes,
+    loadedGraph.adjacency,
+    loadedGraph.bounds,
+    edgePaths,
+    landScale,
+  );
   logRoute(`[Route:${game}] ok start=${startUid} goal=${goalUid} nodes=${result.path.length} length=${Math.round(result.totalLength)}m km=${totalLengthKm} routeMs=${routeMs} geoMs=${geoMs} totalMs=${Date.now() - requestT0}`);
   res.json({
     game,
@@ -357,5 +366,6 @@ router.get('/route', async (req: Request, res: Response) => {
     goalUid,
     routeMs,
     route: geoJson,
+    maneuvers,
   });
 });

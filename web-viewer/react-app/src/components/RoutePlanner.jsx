@@ -4,6 +4,93 @@ import { useCompanies } from '../hooks/useCompanies'
 import { mapToGameCoords, gameToMapCoords } from '../utils/coordinates'
 import './RoutePlanner.css'
 
+// ── Turn-by-turn formatting ──────────────────────────────────────────────────
+const MANEUVER_ICON = {
+  depart: '●',
+  via: '◉',
+  arrive: '⚑',
+  ferry: '⛴',
+  'ferry-exit': '⚓',
+  exit: '⤴',
+  merge: '⤚',
+  'turn-left': '↰',
+  'turn-right': '↱',
+  'slight-left': '↖',
+  'slight-right': '↗',
+  'sharp-left': '⬅',
+  'sharp-right': '➡',
+  uturn: '↶',
+  straight: '↑',
+}
+
+function maneuverIcon(m) {
+  if (m.type === 'turn' || m.type === 'exit' || m.type === 'merge') {
+    if (m.modifier && MANEUVER_ICON[m.modifier]) {
+      if (m.modifier === 'left' || m.modifier === 'right') return MANEUVER_ICON[`turn-${m.modifier}`]
+      return MANEUVER_ICON[m.modifier]
+    }
+  }
+  return MANEUVER_ICON[m.type] || '•'
+}
+
+function sideLabel(modifier) {
+  switch (modifier) {
+    case 'slight-left':  return 'leggermente a sinistra'
+    case 'slight-right': return 'leggermente a destra'
+    case 'sharp-left':   return 'secca a sinistra'
+    case 'sharp-right':  return 'secca a destra'
+    case 'left':         return 'a sinistra'
+    case 'right':        return 'a destra'
+    case 'uturn':        return 'inverti il senso'
+    default:             return ''
+  }
+}
+
+function maneuverLabel(m) {
+  switch (m.type) {
+    case 'depart':     return 'Parti'
+    case 'arrive':     return 'Arrivo a destinazione'
+    case 'via':        return 'Tappa intermedia'
+    case 'ferry':      return 'Imbarco sul traghetto'
+    case 'ferry-exit': return 'Sbarca dal traghetto'
+    case 'merge':      return 'Immettiti in autostrada'
+    case 'exit':       return `Prendi l'uscita ${sideLabel(m.modifier)}`.trim()
+    case 'turn':
+      if (m.modifier === 'uturn') return 'Inverti il senso di marcia'
+      if (m.modifier === 'slight-left' || m.modifier === 'slight-right') return `Tieni ${sideLabel(m.modifier)}`
+      return `Svolta ${sideLabel(m.modifier)}`.trim()
+    default:           return 'Prosegui'
+  }
+}
+
+function formatDistance(meters) {
+  if (!meters || meters < 0) return ''
+  if (meters >= 1000) return `${(meters / 1000).toFixed(meters >= 10000 ? 0 : 1)} km`
+  return `${Math.round(meters / 10) * 10} m`
+}
+
+function ManeuverList({ maneuvers, onSelect }) {
+  if (!maneuvers || maneuvers.length === 0) return null
+  return (
+    <ol className="rp-steps">
+      {maneuvers.map((m, i) => (
+        <li
+          key={i}
+          className={`rp-step rp-step--${m.type}`}
+          onClick={() => onSelect?.(m)}
+          title="Vai alla manovra"
+        >
+          <span className="rp-step-icon">{maneuverIcon(m)}</span>
+          <span className="rp-step-text">{maneuverLabel(m)}</span>
+          {i > 0 && m.type !== 'depart' && (
+            <span className="rp-step-dist">{formatDistance(m.distanceFromPrevM)}</span>
+          )}
+        </li>
+      ))}
+    </ol>
+  )
+}
+
 function WaypointDropdown({ cities, companies, value, onChange, placeholder }) {
   const val = value ? JSON.stringify({ x: value.x, z: value.z, name: value.name }) : ''
 
@@ -264,6 +351,7 @@ function RoutePlanner({ mapInstance, tileMapInfo, cities }) {
                   <span className="rp-result-ferry">⛴ {routeInfo.ferryLengthKm.toLocaleString()} km</span>
                 </div>
               )}
+              <ManeuverList maneuvers={routeInfo.maneuvers} onSelect={flyTo} />
             </div>
           )}
         </div>
