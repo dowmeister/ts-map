@@ -47,7 +47,15 @@ class BinaryMinHeap {
   }
 }
 
-const MAX_EXPANSIONS = 500_000;
+// Plain A* with an admissible Euclidean heuristic explores a huge fraction of the
+// (1M+ node) lane graph on continent-scale routes, because the straight-line distance
+// badly under-estimates the real driving cost when the path has to wrap around seas and
+// mountain ranges. We use a lightly weighted heuristic (weighted A* / ε-admissible) to
+// focus the frontier toward the goal: the returned path can be at most HEURISTIC_WEIGHT×
+// the optimal cost, but in practice stays within a couple of percent on this road network
+// while cutting expansions by an order of magnitude on long routes.
+const HEURISTIC_WEIGHT = 1.6;
+const MAX_EXPANSIONS = 2_000_000;
 const LANE_CHANGE_COST_METERS = 10;
 const LOCAL_DETOUR_MULTIPLIER_IN_SHORTEST = 1.45;
 const FERRY_BOARDING_PENALTY_METERS = 5_000;
@@ -109,7 +117,7 @@ export function findRoute(
   const cameFromEdge = new Map<string, GraphEdge>();
 
   gScore.set(startUid, 0);
-  heap.push(startUid, 0, heuristic(startNode, goalNode));
+  heap.push(startUid, 0, HEURISTIC_WEIGHT * heuristic(startNode, goalNode));
 
   let expansions = 0;
 
@@ -188,7 +196,7 @@ export function findRoute(
         gScore.set(edge.to, tentativeG);
         cameFrom.set(edge.to, uid);
         cameFromEdge.set(edge.to, edge);
-        const f = tentativeG + heuristic(toNode, goalNode);
+        const f = tentativeG + HEURISTIC_WEIGHT * heuristic(toNode, goalNode);
         heap.push(edge.to, tentativeG, f);
       }
     }

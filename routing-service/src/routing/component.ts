@@ -73,15 +73,19 @@ export class DirectedComponentIndex {
   private readonly _componentByUid: Map<string, number> = new Map();
   private readonly _componentAdjacency: Map<number, number[]> = new Map();
   private readonly _reachabilityCache: Map<number, Set<number>> = new Map();
+  private _reverseComponentAdjacency: Map<number, number[]> | undefined;
   private _componentCount = 0;
   private _largestComponentSize = 0;
+  private _largestComponentId = -1;
 
   build(nodes: Record<string, GraphNode>, adjacency: Record<string, GraphEdge[]>): void {
     this._componentByUid.clear();
     this._componentAdjacency.clear();
     this._reachabilityCache.clear();
+    this._reverseComponentAdjacency = undefined;
     this._componentCount = 0;
     this._largestComponentSize = 0;
+    this._largestComponentId = -1;
 
     const uids = Object.keys(nodes);
     const visited = new Set<string>();
@@ -170,6 +174,10 @@ export class DirectedComponentIndex {
 
     this._componentCount = componentSizes.length;
     this._largestComponentSize = componentSizes.reduce((best, size) => Math.max(best, size), 0);
+    this._largestComponentId = -1;
+    for (let i = 0; i < componentSizes.length; i++) {
+      if (componentSizes[i] === this._largestComponentSize) { this._largestComponentId = i; break; }
+    }
   }
 
   componentOf(uid: string): number | undefined {
@@ -197,6 +205,40 @@ export class DirectedComponentIndex {
 
   get componentCount(): number { return this._componentCount; }
   get largestComponentSize(): number { return this._largestComponentSize; }
+
+  // Returns the set of component ids that can reach `target` (including target),
+  // via a single reverse BFS over the condensation graph. Useful for computing
+  // the "escape set" — components from which the giant SCC is reachable.
+  componentsThatCanReach(target: number): Set<number> {
+    // Lazily build reverse condensation adjacency on first use.
+    if (!this._reverseComponentAdjacency) {
+      const reverse = new Map<number, number[]>();
+      for (const [from, targets] of this._componentAdjacency) {
+        for (const to of targets) {
+          let list = reverse.get(to);
+          if (!list) { list = []; reverse.set(to, list); }
+          list.push(from);
+        }
+      }
+      this._reverseComponentAdjacency = reverse;
+    }
+
+    const result = new Set<number>([target]);
+    const queue = [target];
+    for (let i = 0; i < queue.length; i++) {
+      const component = queue[i];
+      for (const prev of this._reverseComponentAdjacency.get(component) ?? []) {
+        if (!result.has(prev)) {
+          result.add(prev);
+          queue.push(prev);
+        }
+      }
+    }
+    return result;
+  }
+
+  // Component id holding the most nodes (the giant SCC). Returns -1 if empty.
+  get largestComponentId(): number { return this._largestComponentId; }
 
   private _reachableComponents(startComponent: number): Set<number> {
     let reachable = this._reachabilityCache.get(startComponent);

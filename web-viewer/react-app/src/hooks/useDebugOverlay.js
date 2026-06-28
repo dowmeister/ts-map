@@ -14,6 +14,8 @@ export function useDebugOverlay(mapInstance, tileMapInfo, graphEnabled, issuesEn
   const softIssuesEnabledRef = useRef(softIssuesEnabled)
   const popupRef        = useRef(null)
   const issuesLoadedRef = useRef(false)
+  const fetchSeqRef     = useRef(0)
+  const lastBboxKeyRef  = useRef(null)
 
   useEffect(() => { graphEnabledRef.current = graphEnabled }, [graphEnabled])
   useEffect(() => { issuesEnabledRef.current = issuesEnabled }, [issuesEnabled])
@@ -45,6 +47,7 @@ export function useDebugOverlay(mapInstance, tileMapInfo, graphEnabled, issuesEn
     const onStyleLoad = () => {
       arrowLoadedRef.current = false
       loadArrow(mapInstance)
+      lastBboxKeyRef.current = null
       if (graphEnabledRef.current) fetchDebugData()
       if (issuesEnabledRef.current) fetchIssuesData()
     }
@@ -62,6 +65,7 @@ export function useDebugOverlay(mapInstance, tileMapInfo, graphEnabled, issuesEn
     // Zoom gate on the client — no request below threshold
     if (zoom < 9) {
       laneSource.setData({ type: 'FeatureCollection', features: [] })
+      lastBboxKeyRef.current = null
       return
     }
 
@@ -71,12 +75,25 @@ export function useDebugOverlay(mapInstance, tileMapInfo, graphEnabled, issuesEn
     const minX = Math.min(swX, neX), maxX = Math.max(swX, neX)
     const minZ = Math.min(swZ, neZ), maxZ = Math.max(swZ, neZ)
 
+    // Skip refetch when the viewport hasn't meaningfully changed (avoids redundant
+    // 25 MB chunk work on the server for sub-tile pans / repeated moveend events).
+    const bboxKey = `${Math.round(minX)},${Math.round(maxX)},${Math.round(minZ)},${Math.round(maxZ)}`
+    if (bboxKey === lastBboxKeyRef.current) return
+
     const game = tileMapInfo?.game || 'ets2'
     const laneUrl = `${ROUTING_BASE}/api/lane-graph/debug?game=${game}&minX=${minX}&maxX=${maxX}&minZ=${minZ}&maxZ=${maxZ}&arrows=false`
     const syntheticUrl = `${ROUTING_BASE}/api/graph/debug?game=${game}&minX=${minX}&maxX=${maxX}&minZ=${minZ}&maxZ=${maxZ}&synthetic=true`
 
+    // Monotonic request token: a newer request supersedes older ones. We never
+    // abort an in-flight request (that would throw away data the server already
+    // produced) — instead we let it finish and only apply the result if it is
+    // still the most recent request. This guarantees the final viewport always
+    // renders, while stale out-of-order responses are dropped.
+    const seq = ++fetchSeqRef.current
+
     try {
       const [laneRes, syntheticRes] = await Promise.all([fetch(laneUrl), fetch(syntheticUrl)])
+      if (seq !== fetchSeqRef.current || !graphEnabledRef.current) return
       if (laneRes.ok) {
         const laneGeojson = await laneRes.json()
         let features = laneGeojson.features || []
@@ -84,10 +101,12 @@ export function useDebugOverlay(mapInstance, tileMapInfo, graphEnabled, issuesEn
           const syntheticGeojson = await syntheticRes.json()
           features = [...features, ...asLaneDebugFeatures(syntheticGeojson)]
         }
+        if (seq !== fetchSeqRef.current || !graphEnabledRef.current) return
         laneSource.setData(withLaneArrows({ ...laneGeojson, features }))
+        lastBboxKeyRef.current = bboxKey
       }
     } catch {
-      // Network errors: silently ignore (dev server may be stopped)
+      // Network errors (dev server stopped): ignore silently.
     }
   }, [mapInstance, tileMapInfo])
 
@@ -138,6 +157,9 @@ export function useDebugOverlay(mapInstance, tileMapInfo, graphEnabled, issuesEn
       mapInstance.off('mouseenter', 'lane-graph-debug-edges', setCursorPointer)
       mapInstance.off('mouseleave', 'lane-graph-debug-edges', resetCursor)
 
+      // Invalidate any in-flight request so its (late) response won't repaint.
+      fetchSeqRef.current++
+      lastBboxKeyRef.current = null
       const source = mapInstance.getSource('graph-debug')
       if (source) source.setData({ type: 'FeatureCollection', features: [] })
       const laneSource = mapInstance.getSource('lane-graph-debug')

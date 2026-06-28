@@ -71,7 +71,13 @@ type LaneGraphDebugSource =
   | { split: false; data: LaneGraphDebugData };
 const laneGraphSourceCache: Record<string, LaneGraphDebugSource | null> = {};
 const laneChunkCache = new Map<string, unknown[]>();
+const laneChunkInFlight = new Map<string, Promise<unknown[]>>();
+const lanePrewarmStarted = new Set<string>();
 const MAX_LANE_CHUNK_CACHE_ENTRIES = 96;
+// Timestamp of the last interactive lane-graph request. The background pre-warm
+// uses this to back off while the user is actively panning, so warm-up never
+// competes with on-screen requests for the (single-threaded) event loop.
+let lastLaneRequestAt = 0;
 
 function firstExistingPath(paths: string[]): string | null {
   for (const filePath of paths) {
@@ -402,23 +408,76 @@ function loadLaneGraphDebugSource(game: string): LaneGraphDebugSource | null {
   }
 }
 
-function readLaneChunk<T>(baseDir: string, fileName: string): T[] {
+function readLaneChunk<T>(baseDir: string, fileName: string): Promise<T[]> {
   const filePath = path.join(baseDir, fileName);
+
   const cached = laneChunkCache.get(filePath);
   if (cached) {
+    // LRU bump
     laneChunkCache.delete(filePath);
     laneChunkCache.set(filePath, cached);
-    return cached as T[];
+    return Promise.resolve(cached as T[]);
   }
 
-  const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as T[];
-  laneChunkCache.set(filePath, parsed as unknown[]);
-  while (laneChunkCache.size > MAX_LANE_CHUNK_CACHE_ENTRIES) {
-    const oldest = laneChunkCache.keys().next().value;
-    if (!oldest) break;
-    laneChunkCache.delete(oldest);
-  }
-  return parsed;
+  // De-duplicate concurrent reads of the same chunk: many viewport requests can
+  // touch the same 25 MB file, and we must parse it only once.
+  const inFlight = laneChunkInFlight.get(filePath);
+  if (inFlight) return inFlight as Promise<T[]>;
+
+  const promise = (async () => {
+    // Async read keeps disk I/O off the event loop; only the JSON.parse blocks,
+    // and because callers await each chunk sequentially the loop gets to breathe
+    // between chunks instead of freezing for ~1.5 s on a cold viewport.
+    const buf = await fs.promises.readFile(filePath, 'utf-8');
+    const parsed = JSON.parse(buf) as unknown[];
+    laneChunkCache.set(filePath, parsed);
+    while (laneChunkCache.size > MAX_LANE_CHUNK_CACHE_ENTRIES) {
+      const oldest = laneChunkCache.keys().next().value;
+      if (!oldest || oldest === filePath) break;
+      laneChunkCache.delete(oldest);
+    }
+    return parsed;
+  })();
+
+  laneChunkInFlight.set(filePath, promise);
+  promise.finally(() => laneChunkInFlight.delete(filePath)).catch(() => {});
+  return promise as Promise<T[]>;
+}
+
+// Background pre-warm: once the user enables the road graph, load every chunk for
+// the active game so the whole map eventually pans instantly from cache. It is
+// paced and idle-gated — it only parses a chunk when no interactive request has
+// arrived in the last IDLE_MS, otherwise it defers. This keeps live viewport
+// requests fast (sub-second) instead of queueing behind ~500 ms chunk parses.
+function prewarmLaneChunks(source: LaneGraphDebugSource, game: string): void {
+  if (!source.split || lanePrewarmStarted.has(game)) return;
+  lanePrewarmStarted.add(game);
+
+  const files = [...nodeChunkFiles(source), ...edgeChunkFiles(source)];
+  const IDLE_MS = 750;
+  let i = 0;
+  const loadNext = (): void => {
+    if (i >= files.length) return;
+
+    // Defer while the user is actively requesting data.
+    if (Date.now() - lastLaneRequestAt < IDLE_MS) {
+      setTimeout(loadNext, IDLE_MS);
+      return;
+    }
+
+    const fileName = files[i];
+    const filePath = path.join(source.baseDir, fileName);
+    if (laneChunkCache.has(filePath)) {
+      i++;
+      setImmediate(loadNext);
+      return;
+    }
+
+    readLaneChunk(source.baseDir, fileName)
+      .catch(() => { /* missing/corrupt chunk: skip, on-demand load will retry */ })
+      .finally(() => { i++; setTimeout(loadNext, 60); });
+  };
+  setTimeout(loadNext, IDLE_MS);
 }
 
 function chunkTouchesBbox(chunk: LaneGraphDebugChunk, minX: number, maxX: number, minZ: number, maxZ: number): boolean {
@@ -443,7 +502,7 @@ function edgeChunkFiles(source: Extract<LaneGraphDebugSource, { split: true }>, 
   return (source.manifest.edges ?? []).filter((fileName): fileName is string => typeof fileName === 'string');
 }
 
-function forEachLaneNode(source: LaneGraphDebugSource, visit: (node: LaneGraphDebugNode) => void, bbox?: { minX: number; maxX: number; minZ: number; maxZ: number }): number {
+async function forEachLaneNode(source: LaneGraphDebugSource, visit: (node: LaneGraphDebugNode) => void, bbox?: { minX: number; maxX: number; minZ: number; maxZ: number }): Promise<number> {
   let total = 0;
   if (!source.split) {
     for (const node of source.data.nodes) {
@@ -454,14 +513,14 @@ function forEachLaneNode(source: LaneGraphDebugSource, visit: (node: LaneGraphDe
   }
 
   for (const fileName of nodeChunkFiles(source, bbox?.minX, bbox?.maxX, bbox?.minZ, bbox?.maxZ)) {
-    const chunk = readLaneChunk<LaneGraphDebugNode>(source.baseDir, fileName);
+    const chunk = await readLaneChunk<LaneGraphDebugNode>(source.baseDir, fileName);
     total += chunk.length;
     for (const node of chunk) visit(node);
   }
   return total;
 }
 
-function forEachLaneEdge(source: LaneGraphDebugSource, visit: (edge: LaneGraphDebugEdge) => void, bbox?: { minX: number; maxX: number; minZ: number; maxZ: number }): number {
+async function forEachLaneEdge(source: LaneGraphDebugSource, visit: (edge: LaneGraphDebugEdge) => void, bbox?: { minX: number; maxX: number; minZ: number; maxZ: number }): Promise<number> {
   let total = 0;
   if (!source.split) {
     for (const edge of source.data.edges) {
@@ -472,7 +531,7 @@ function forEachLaneEdge(source: LaneGraphDebugSource, visit: (edge: LaneGraphDe
   }
 
   for (const fileName of edgeChunkFiles(source, bbox?.minX, bbox?.maxX, bbox?.minZ, bbox?.maxZ)) {
-    const chunk = readLaneChunk<LaneGraphDebugEdge>(source.baseDir, fileName);
+    const chunk = await readLaneChunk<LaneGraphDebugEdge>(source.baseDir, fileName);
     total += chunk.length;
     for (const edge of chunk) visit(edge);
   }
@@ -520,8 +579,9 @@ function arrowOnLine(coords: [number, number][], ratio: number): { lon: number; 
   };
 }
 
-export function laneGraphDebugHandler(req: Request, res: Response): void {
+export async function laneGraphDebugHandler(req: Request, res: Response): Promise<void> {
   const t0 = Date.now();
+  lastLaneRequestAt = t0;
   const game = (req.query['game'] as string) || 'ets2';
   const state = getGraphState(game);
   if (!state) {
@@ -546,6 +606,10 @@ export function laneGraphDebugHandler(req: Request, res: Response): void {
     return;
   }
 
+  // Kick off a one-time background warm-up of all chunks for this game so panning
+  // becomes instant after the first few seconds.
+  prewarmLaneChunks(source, game);
+
   const bounds = state.graph.bounds;
   const includeArrows = req.query['arrows'] !== 'false';
   const features: object[] = [];
@@ -554,7 +618,7 @@ export function laneGraphDebugHandler(req: Request, res: Response): void {
 
   const bbox = { minX, maxX, minZ, maxZ };
 
-  const totalEdges = forEachLaneEdge(source, edge => {
+  const totalEdges = await forEachLaneEdge(source, edge => {
     if (!edge.path || edge.path.length < 2) return;
     if (!pathTouchesBbox(edge.path, minX, maxX, minZ, maxZ)) return;
     visibleEdges++;
@@ -605,7 +669,7 @@ export function laneGraphDebugHandler(req: Request, res: Response): void {
     }
   }, bbox);
 
-  const totalNodes = forEachLaneNode(source, node => {
+  const totalNodes = await forEachLaneNode(source, node => {
     if (node.x < minX || node.x > maxX || node.z < minZ || node.z > maxZ) return;
     visibleNodes++;
     const [lon, lat] = ets2ToWgs84(node.x, node.z, bounds);
@@ -633,7 +697,7 @@ export function laneGraphDebugHandler(req: Request, res: Response): void {
   res.json({ type: 'FeatureCollection', features });
 }
 
-export function laneGraphIssuesHandler(req: Request, res: Response): void {
+export async function laneGraphIssuesHandler(req: Request, res: Response): Promise<void> {
   const t0 = Date.now();
   const game = (req.query['game'] as string) || 'ets2';
   const includeSoft = req.query['soft'] === 'true' || req.query['includeSoft'] === 'true';
@@ -656,7 +720,7 @@ export function laneGraphIssuesHandler(req: Request, res: Response): void {
   let blocking = 0;
   let soft = 0;
 
-  forEachLaneNode(source, node => {
+  await forEachLaneNode(source, node => {
     const isBlocking = blockingIssueKinds.has(node.kind);
     const isSoft = softIssueKinds.has(node.kind);
     if (!isBlocking && (!includeSoft || !isSoft)) return;

@@ -599,14 +599,21 @@ namespace TsMap.Routing
             }
 
             // Ferry port icons sit inside the port area, often off the driveable road network.
-            // Add a synthetic approach edge from the ferry port node to the nearest road/prefab
-            // node already in the graph so the terminal is reachable from the road network.
+            // Add a synthetic approach edge from the ferry port node to the nearest ROAD node
+            // already in the graph so the terminal is reachable from the road network.
+            //
+            // Crucially this must snap to a *road* node, not just the nearest graph node: ferry
+            // terminals are surrounded by isolated customs/border prefab clusters whose nodes are
+            // co-located with the real road but not connected to it. Snapping to such a prefab
+            // severs whole ferry-only regions (e.g. the Caspian crossing to Kazakhstan, whose
+            // European side lands at Poti). A real road node is always within a few hundred units.
             foreach (var kv in portToNodeUid)
             {
                 var portNode = _mapper.GetNodeByUid(kv.Value);
                 if (portNode == null || IsZeroNode(portNode)) continue;
 
-                var nearest = FindNearestGraphNode(portNode.X, portNode.Z, kv.Value);
+                var nearest = FindNearestRoadNode(portNode.X, portNode.Z, kv.Value)
+                              ?? FindNearestGraphNode(portNode.X, portNode.Z, kv.Value);
                 if (nearest == null) continue;
 
                 float dx = nearest.X - portNode.X, dz = nearest.Z - portNode.Z;
@@ -675,7 +682,8 @@ namespace TsMap.Routing
                     var compNode = _mapper.GetNodeByUid(nodeUid);
                     if (compNode == null || IsZeroNode(compNode)) continue;
 
-                    var nearest = FindNearestGraphNode(compNode.X, compNode.Z, nodeUid);
+                    var nearest = FindNearestRoadNode(compNode.X, compNode.Z, nodeUid)
+                                  ?? FindNearestGraphNode(compNode.X, compNode.Z, nodeUid);
                     if (nearest == null) continue;
 
                     float dx = nearest.X - compNode.X, dz = nearest.Z - compNode.Z;

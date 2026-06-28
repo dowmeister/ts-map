@@ -7,6 +7,7 @@ import DebugToggle from './components/DebugToggle'
 import LayerToggle from './components/LayerToggle'
 import PolygonTool from './components/PolygonTool'
 import RoutePlanner from './components/RoutePlanner'
+import ContextMenu from './components/ContextMenu'
 import { useTileMapInfo } from './hooks/useTileMapInfo'
 import { useCities } from './hooks/useCities'
 import { useDebugOverlay } from './hooks/useDebugOverlay'
@@ -110,6 +111,10 @@ function App() {
         mapInstance={mapInstance}
         tileMapInfo={tileMapInfo}
         cities={cities}
+      />
+      <ContextMenu
+        mapInstance={mapInstance}
+        tileMapInfo={tileMapInfo}
       />
       <MapViewer
         game={currentGame}

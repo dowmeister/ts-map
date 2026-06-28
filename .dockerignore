@@ -20,3 +20,11 @@ routing-service/dist
 *.md
 .env
 .env.local
+
+# Heavy regenerable data — never part of any image build context.
+# (routing-service/data is the staged, gzipped subset and is NOT ignored.)
+map_data
+mbtiles
+pmtiles
+tmp-build
+docs

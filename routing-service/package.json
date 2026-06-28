@@ -7,6 +7,7 @@
     "build": "tsc",
     "start": "node --max-old-space-size=8192 dist/server.js",
     "dev": "node --max-old-space-size=8192 -r ts-node/register src/server.ts",
+    "prepare:data": "node scripts/prepare-routing-data.mjs",
     "debug:routes": "ts-node src/debug-routes.ts"
   },
   "dependencies": {

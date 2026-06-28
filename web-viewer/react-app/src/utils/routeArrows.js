@@ -73,13 +73,19 @@ export function arrowOnLine(coords, ratio = 0.7) {
 
 export function buildRouteManeuverFeatures(legs, tileMapInfo, options = {}) {
   const {
-    lookDistance = 80,
-    lookDistances = [lookDistance, lookDistance * 2, lookDistance * 3.25],
-    exitArm = 72,
-    bodyLength = 46,
-    minTurnDegrees = 24,
-    maxTurnDegrees = 170,
-    minSpacing = 180,
+    // Window (game units) on each side of a vertex used to measure how hard the
+    // route turns *there*. Short window => only genuine junction turns register,
+    // gentle road/highway curvature stays near 0.
+    senseWindow = 24,
+    // A vertex is a maneuver when the local turn is at least this many degrees.
+    minTurnDegrees = 32,
+    // Reject near-reversals (loop/smoothing artefacts), not real maneuvers.
+    maxTurnDegrees = 172,
+    // Minimum arc-length gap between two kept maneuvers.
+    minSpacing = 95,
+    // Arrow body geometry around the decision point.
+    backArm = 15,
+    frontArm = 32,
   } = options
   const features = []
 
@@ -88,46 +94,56 @@ export function buildRouteManeuverFeatures(legs, tileMapInfo, options = {}) {
     const points = routePoints(coords, tileMapInfo)
     if (points.length < 5) continue
 
-    let lastArrow = null
-    for (let i = 1; i < points.length - 1; i++) {
-      // Multi-scale detection: a sharp junction shows a big angle over a short
-      // window, while a sweeping interchange ramp only reveals its heading
-      // change over a wider window. Try increasingly wide windows and accept
-      // the first one whose direction change qualifies.
-      let turn = 0
-      let detected = false
-      for (const ld of lookDistances) {
-        const prev = pointBefore(points, i, ld)
-        const next = pointAfter(points, i, ld)
-        if (!prev || !next) continue
-        const t = signedTurnDegrees(prev.game, points[i].game, next.game)
-        const absT = Math.abs(t)
-        if (absT >= minTurnDegrees && absT <= maxTurnDegrees) {
-          turn = t
-          detected = true
-          break
-        }
-      }
-      if (!detected) continue
-      if (lastArrow && gameDistance(lastArrow.game, points[i].game) < minSpacing) continue
+    // Cumulative arc length (game units) for spacing/peak suppression.
+    const arc = new Array(points.length)
+    arc[0] = 0
+    for (let i = 1; i < points.length; i++) {
+      arc[i] = arc[i - 1] + gameDistance(points[i - 1].game, points[i].game)
+    }
 
-      // Tip sits just past the apex; the body is a fixed-length segment ending
-      // at the tip, so the tail stays short and close to the turn.
-      const armEnd = pointAfter(points, i, exitArm) || points[Math.min(points.length - 1, i + 1)]
-      const armStart = pointBefore(points, armEnd.index, bodyLength) || points[Math.max(0, i - 1)]
+    // 1) Local signed turn angle at every interior vertex.
+    const candidates = []
+    for (let i = 1; i < points.length - 1; i++) {
+      const prev = pointBefore(points, i, senseWindow)
+      const next = pointAfter(points, i, senseWindow)
+      if (!prev || !next) continue
+      const turn = signedTurnDegrees(prev.game, points[i].game, next.game)
+      const absTurn = Math.abs(turn)
+      if (absTurn < minTurnDegrees || absTurn > maxTurnDegrees) continue
+      candidates.push({ index: i, turn, absTurn })
+    }
+    if (!candidates.length) continue
+
+    // 2) Greedy non-maximum suppression: keep the sharpest vertex of each turn,
+    //    then reject anything within minSpacing of an already-kept maneuver. This
+    //    collapses the cluster of vertices that make up one junction into a
+    //    single, well-placed arrow.
+    candidates.sort((a, b) => b.absTurn - a.absTurn)
+    const kept = []
+    for (const c of candidates) {
+      if (kept.some(k => Math.abs(arc[k.index] - arc[c.index]) < minSpacing)) continue
+      kept.push(c)
+    }
+    kept.sort((a, b) => a.index - b.index)
+
+    // 3) Emit a short bent arrow centred on each decision point: a stubby tail
+    //    leading into the turn and the head just past it, aimed along the exit.
+    for (const { index: i, turn } of kept) {
+      const armEnd = pointAfter(points, i, frontArm) || points[Math.min(points.length - 1, i + 1)]
+      const armStart = pointBefore(points, i, backArm) || points[Math.max(0, i - 1)]
       const maneuverCoords = routeSlice(points, armStart.index, armEnd.index)
       if (maneuverCoords.length < 2) continue
 
-      lastArrow = points[i]
-      // Aim the arrowhead along the exit tangent (averaged over a short span so
-      // it follows the road after the turn rather than the apex chord).
-      const exitFrom = pointBefore(points, armEnd.index, 18) || points[Math.max(0, armEnd.index - 1)]
+      // Exit tangent: bearing over the last short span of the body.
+      const exitFrom = pointBefore(points, armEnd.index, 16) || points[Math.max(0, armEnd.index - 1)]
+      const side = turn > 0 ? 'left' : 'right'
+
       features.push({
         type: 'Feature',
         geometry: { type: 'LineString', coordinates: maneuverCoords },
         properties: {
           featureType: 'route_turn_line',
-          maneuver: turn > 0 ? 'left' : 'right',
+          maneuver: side,
           turn: Math.round(turn),
           legIndex,
         },
@@ -137,7 +153,7 @@ export function buildRouteManeuverFeatures(legs, tileMapInfo, options = {}) {
         geometry: { type: 'Point', coordinates: armEnd.coord },
         properties: {
           featureType: 'route_maneuver',
-          maneuver: turn > 0 ? 'left' : 'right',
+          maneuver: side,
           turn: Math.round(turn),
           bearing: mapBearingDegrees(exitFrom.coord, armEnd.coord),
           legIndex,

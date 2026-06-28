@@ -1044,16 +1044,31 @@ namespace TsMap.Routing
                 avgZ += endpoint.DirZ;
             }
             float avgLen = (float)Math.Sqrt(avgX * avgX + avgZ * avgZ);
-            if (avgLen < 0.001f) return 0;
-            avgX /= avgLen;
-            avgZ /= avgLen;
 
-            float lateralX = -avgZ;
-            float lateralZ = avgX;
-            endEndpoints.Sort((a, b) => Lateral(a, lateralX, lateralZ).CompareTo(Lateral(b, lateralX, lateralZ)));
-            startEndpoints.Sort((a, b) => Lateral(a, lateralX, lateralZ).CompareTo(Lateral(b, lateralX, lateralZ)));
+            List<EndpointMatch> matches;
+            if (avgLen < 0.001f)
+            {
+                // Two prefabs can meet at a single shared game node where the two
+                // opposing carriageways come together (e.g. a country-border crossing).
+                // In that case the group mixes lanes flowing in opposite directions, so the
+                // averaged end direction cancels out and the lateral ordering axis is
+                // undefined. Fall back to nearest-position matching, which still links the
+                // coincident end/start pairs across the two prefabs (each pair is ~0m apart
+                // and direction-aligned) instead of dropping the connection entirely.
+                matches = FindBestProximityMatches(endEndpoints, startEndpoints, maxSnapDistance, minDot);
+            }
+            else
+            {
+                avgX /= avgLen;
+                avgZ /= avgLen;
 
-            var matches = FindBestOrderedMatches(endEndpoints, startEndpoints, maxSnapDistance, minDot);
+                float lateralX = -avgZ;
+                float lateralZ = avgX;
+                endEndpoints.Sort((a, b) => Lateral(a, lateralX, lateralZ).CompareTo(Lateral(b, lateralX, lateralZ)));
+                startEndpoints.Sort((a, b) => Lateral(a, lateralX, lateralZ).CompareTo(Lateral(b, lateralX, lateralZ)));
+
+                matches = FindBestOrderedMatches(endEndpoints, startEndpoints, maxSnapDistance, minDot);
+            }
             int snapped = 0;
             foreach (var match in matches)
             {
@@ -1365,6 +1380,48 @@ namespace TsMap.Routing
                     path[i][1] += startDz * startWeight + endDz * endWeight;
                 }
             }
+        }
+
+        private static List<EndpointMatch> FindBestProximityMatches(
+            List<LaneEndpoint> endEndpoints,
+            List<LaneEndpoint> startEndpoints,
+            float maxSnapDistance,
+            float minDot)
+        {
+            // Greedy nearest-position assignment used when the endpoint group has no
+            // well-defined flow direction (opposing carriageways meeting at a shared node).
+            // Only cross-prefab pairs that pass the distance/angle test are considered, so
+            // a shared game node links each prefab to its neighbour without inventing turns.
+            var candidates = new List<EndpointMatch>();
+            foreach (var end in endEndpoints)
+            {
+                foreach (var start in startEndpoints)
+                {
+                    if (end.Edge.SourceUid == start.Edge.SourceUid) continue;
+                    if (!TryScoreMatch(end, start, maxSnapDistance, minDot, out var dist, out var dot, out var score)) continue;
+                    candidates.Add(new EndpointMatch
+                    {
+                        Road = end,
+                        Prefab = start,
+                        Distance = dist,
+                        Dot = dot,
+                        Cost = score,
+                    });
+                }
+            }
+
+            candidates.Sort((a, b) => a.Cost.CompareTo(b.Cost));
+            var usedEnds = new HashSet<string>();
+            var usedStarts = new HashSet<string>();
+            var result = new List<EndpointMatch>();
+            foreach (var candidate in candidates)
+            {
+                if (usedEnds.Contains(candidate.Road.Id) || usedStarts.Contains(candidate.Prefab.Id)) continue;
+                usedEnds.Add(candidate.Road.Id);
+                usedStarts.Add(candidate.Prefab.Id);
+                result.Add(candidate);
+            }
+            return result;
         }
 
         private static List<EndpointMatch> FindBestOrderedMatches(

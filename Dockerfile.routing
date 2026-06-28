@@ -20,6 +20,12 @@ RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
 
+# Baked routing data: gzipped graphs + small support JSON, staged by
+# `npm run prepare:data` (routing-service/scripts/prepare-routing-data.mjs)
+# into routing-service/data. The loader reads the .gz graphs directly, so the
+# raw multi-GB map_data is never needed in the image or at runtime.
+COPY routing-service/data /data
+
 EXPOSE 3001
 
 ENV MAP_DATA_PATH=/data

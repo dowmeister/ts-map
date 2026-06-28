@@ -1,10 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { Router, Request, Response } from 'express';
-import { loadGraph, loadMapBounds } from './loader';
+import { loadGraph, loadMapBounds, findRoutingGraph } from './loader';
 import { setGraphState, getAvailableGames } from './state';
 import { graphDebugHandler, laneGraphDebugHandler, laneGraphIssuesHandler, loadSelectedEdgePaths } from './debug';
 import { DirectedComponentIndex, MainComponentIndex } from './component';
+import { reconnectDirectionalTraps } from './reconnect';
 import { SpatialIndex } from './spatial-index';
 import { findNearestMainComponent, findNearestReachableMainComponent, findNearestWithHeading } from './nearest';
 import { findRoute } from './astar';
@@ -20,6 +21,9 @@ interface GameRuntime {
   spatialIndex: SpatialIndex;
   outgoingNodes: Set<string>;
   incomingNodes: Set<string>;
+  // Directed components from which the giant SCC is reachable. A start node must
+  // live in one of these, otherwise it can route almost nowhere.
+  escapeSet: Set<number>;
 }
 
 const runtimes: Record<string, GameRuntime> = {};
@@ -43,8 +47,7 @@ function discoverGames(mapDataPath: string): string[] {
     return fs.readdirSync(mapDataPath).filter(dir => {
       try {
         return fs.statSync(path.join(mapDataPath, dir)).isDirectory() &&
-               (fs.existsSync(path.join(mapDataPath, dir, 'routing', 'routing-graph.json')) ||
-                fs.existsSync(path.join(mapDataPath, dir, 'geojson', 'routing-graph.json')));
+               findRoutingGraph(mapDataPath, dir) !== null;
       } catch { return false; }
     });
   } catch {
@@ -53,9 +56,8 @@ function discoverGames(mapDataPath: string): string[] {
 }
 
 function loadGame(mapDataPath: string, game: string): void {
-  const newGraphPath = path.join(mapDataPath, game, 'routing', 'routing-graph.json');
-  const oldGraphPath = path.join(mapDataPath, game, 'geojson', 'routing-graph.json');
-  const graphPath = fs.existsSync(newGraphPath) ? newGraphPath : oldGraphPath;
+  const graphPath = findRoutingGraph(mapDataPath, game);
+  if (!graphPath) throw new Error(`routing-graph.json not found for '${game}' in ${mapDataPath}`);
   console.log(`[Routing:${game}] Loading bounds...`);
   const bounds = loadMapBounds(mapDataPath, game);
   console.log(`[Routing:${game}] Bounds X[${bounds.minX.toFixed(0)},${bounds.maxX.toFixed(0)}] Z[${bounds.minZ.toFixed(0)},${bounds.maxZ.toFixed(0)}]`);
@@ -70,10 +72,23 @@ function loadGame(mapDataPath: string, game: string): void {
   const mainPct = (componentIndex.mainSize / loadedGraph.nodeCount * 100).toFixed(2);
   console.log(`[Routing:${game}] Main component: ${componentIndex.mainSize} nodes (${mainPct}%) in ${Date.now()-t2}ms`);
 
+  // Repair directional traps (e.g. the far north of ETS2): add the missing
+  // reverse junction connectors so trapped-but-connected regions can reach the
+  // giant SCC. Must run before the directed component index is built.
+  const t2a = Date.now();
+  const repair = reconnectDirectionalTraps(loadedGraph, componentIndex);
+  console.log(`[Routing:${game}] Trap repair: +${repair.reverseEdgesAdded} reverse connectors for ${repair.repairedNodesBefore} non-giant-SCC nodes in ${Date.now()-t2a}ms`);
+
   const t2b = Date.now();
   const directedComponentIndex = new DirectedComponentIndex();
   directedComponentIndex.build(loadedGraph.nodes, loadedGraph.adjacency);
   console.log(`[Routing:${game}] Directed components: ${directedComponentIndex.componentCount} (largest ${directedComponentIndex.largestComponentSize}) in ${Date.now()-t2b}ms`);
+
+  // Components from which the giant SCC is reachable. Used to snap the start to a
+  // node that can actually reach the rest of the network (symmetric to the
+  // reachability-aware goal snap).
+  const escapeSet = directedComponentIndex.componentsThatCanReach(directedComponentIndex.largestComponentId);
+  console.log(`[Routing:${game}] Escape set: ${escapeSet.size} components can reach the giant SCC`);
 
   const t3 = Date.now();
   const spatialIndex = new SpatialIndex(loadedGraph.nodes, loadedGraph.bounds);
@@ -91,7 +106,7 @@ function loadGame(mapDataPath: string, game: string): void {
   const [parisLon, parisLat] = ets2ToWgs84(-22674, -16800, loadedGraph.bounds);
   console.log(`[Routing:${game}] WGS84 check (-22674,-16800): lon=${parisLon.toFixed(2)} lat=${parisLat.toFixed(2)}`);
 
-  runtimes[game] = { loadedGraph, componentIndex, directedComponentIndex, spatialIndex, outgoingNodes, incomingNodes };
+  runtimes[game] = { loadedGraph, componentIndex, directedComponentIndex, spatialIndex, outgoingNodes, incomingNodes, escapeSet };
   setGraphState(game, { graph: loadedGraph, spatialIndex });
   console.log(`[Routing:${game}] Ready`);
 }
@@ -222,8 +237,14 @@ router.get('/route', async (req: Request, res: Response) => {
   const { loadedGraph, componentIndex, directedComponentIndex, spatialIndex, outgoingNodes, incomingNodes } = rt;
   const { minX, maxX, minZ, maxZ } = loadedGraph.bounds;
   const isInMain = (uid: string) => componentIndex.isInMainComponent(uid);
-  const canDepart = (uid: string) => outgoingNodes.has(uid);
   const canArrive = (uid: string) => incomingNodes.has(uid);
+  // A start node is only useful if it can reach the giant SCC; otherwise it gets
+  // stranded in a tiny directed dead-end and almost no destination is routable.
+  const canDepartAndEscape = (uid: string) => {
+    if (!outgoingNodes.has(uid)) return false;
+    const component = directedComponentIndex.componentOf(uid);
+    return component != null && rt.escapeSet.has(component);
+  };
 
   const marginX = (maxX - minX) * 0.1, marginZ = (maxZ - minZ) * 0.1;
   if (fx < minX - marginX || fx > maxX + marginX || fz < minZ - marginZ || fz > maxZ + marginZ) {
@@ -241,9 +262,9 @@ router.get('/route', async (req: Request, res: Response) => {
   const headingSnap = fromHeading
     ? findNearestWithHeading(fx, fz, heading, spatialIndex, loadedGraph.nodes, loadedGraph.adjacency, loadedGraph.bounds)
     : undefined;
-  const startUid = headingSnap && isInMain(headingSnap)
+  const startUid = headingSnap && isInMain(headingSnap) && canDepartAndEscape(headingSnap)
     ? headingSnap
-    : findNearestMainComponent(fx, fz, spatialIndex, isInMain, canDepart);
+    : findNearestMainComponent(fx, fz, spatialIndex, isInMain, canDepartAndEscape);
   const snapMs = Date.now() - snapT0;
 
   if (!startUid) {

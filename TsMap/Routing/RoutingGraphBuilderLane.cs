@@ -512,7 +512,11 @@ namespace TsMap.Routing
                         }
                     }
 
-                    if ((radius + 1) * CellSize > maxDistance)
+                    // A node in ring `radius` can be as close as (radius-1)*CellSize to the
+                    // query point (when the query sits on the center cell's boundary). Only stop
+                    // once even the closest possible node in the next ring exceeds maxDistance,
+                    // otherwise nodes just across a cell boundary are missed.
+                    if ((radius - 1) * CellSize > maxDistance)
                         break;
                 }
 

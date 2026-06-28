@@ -2,8 +2,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { loadGraph, loadMapBounds } from './routing/loader';
 import { DirectedComponentIndex, MainComponentIndex } from './routing/component';
+import { reconnectDirectionalTraps } from './routing/reconnect';
 import { SpatialIndex } from './routing/spatial-index';
 import { findNearestMainComponent } from './routing/nearest';
+import { findRoute } from './routing/astar';
 import { wgs84ToGame } from './routing/coordinates';
 import type { LoadedGraph } from './routing/types';
 
@@ -16,6 +18,7 @@ interface DebugPoint {
   x: number;
   z: number;
   anchorType?: string;
+  cityName?: string;
   startUid?: string;
   goalUid?: string;
   snapError?: string;
@@ -29,6 +32,8 @@ interface Options {
   candidateRadius: number;
   candidateLimit: number;
   jsonOut?: string;
+  realRouting: boolean;
+  routingMode: 'fastest' | 'shortest';
 }
 
 interface PairIssue {
@@ -38,6 +43,18 @@ interface PairIssue {
   reason: string;
 }
 
+interface AggregatedPoint {
+  label: string;
+  id: string;
+  x: number;
+  z: number;
+  cityName?: string;
+  startUid?: string;
+  goalUid?: string;
+  failCount: number;
+  totalCount: number;
+}
+
 interface DatasetResult {
   name: string;
   pointCount: number;
@@ -45,6 +62,13 @@ interface DatasetResult {
   disconnectedPairs: number;
   snapIssues: DebugPoint[];
   pairIssues: PairIssue[];
+  // Destinations that no routable origin can reach (true island destinations).
+  unreachableDestinations: AggregatedPoint[];
+  // Origins that cannot reach any other point (true island origins).
+  isolatedOrigins: AggregatedPoint[];
+  // Partial offenders (not full islands), ranked by failure count.
+  worstDestinations: AggregatedPoint[];
+  worstOrigins: AggregatedPoint[];
   elapsedMs: number;
 }
 
@@ -55,6 +79,7 @@ interface Runtime {
   spatialIndex: SpatialIndex;
   outgoingNodes: Set<string>;
   incomingNodes: Set<string>;
+  escapeSet: Set<number>;
 }
 
 interface ArrivalCandidate {
@@ -69,8 +94,12 @@ function parseArgs(argv: string[]): Options {
     mapDataPath: process.env['MAP_DATA_PATH'] ?? path.resolve(__dirname, '..', '..', 'map_data'),
     mode: 'all',
     maxIssues: 100,
-    candidateRadius: 2,
+    // Matches production goal snap (findNearestReachableMainComponent expands to
+    // radius 8). A smaller radius produces false-positive island destinations.
+    candidateRadius: 8,
     candidateLimit: 96,
+    realRouting: false,
+    routingMode: 'fastest',
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -115,6 +144,13 @@ function parseArgs(argv: string[]): Options {
       i++;
     } else if (arg.startsWith('--json-out=')) {
       options.jsonOut = path.resolve(arg.slice('--json-out='.length));
+    } else if (arg === '--real-routing') {
+      options.realRouting = true;
+    } else if (arg === '--routing-mode' && next) {
+      options.routingMode = parseRoutingMode(next);
+      i++;
+    } else if (arg.startsWith('--routing-mode=')) {
+      options.routingMode = parseRoutingMode(arg.slice('--routing-mode='.length));
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -126,6 +162,11 @@ function parseArgs(argv: string[]): Options {
 function parseMode(value: string): Options['mode'] {
   if (value === 'all' || value === 'cities' || value === 'companies') return value;
   throw new Error(`Invalid --mode '${value}'. Expected: all, cities, companies`);
+}
+
+function parseRoutingMode(value: string): Options['routingMode'] {
+  if (value === 'fastest' || value === 'shortest') return value;
+  throw new Error(`Invalid --routing-mode '${value}'. Expected: fastest, shortest`);
 }
 
 function parsePositiveInt(value: string, name: string): number {
@@ -149,9 +190,12 @@ Options:
   --map-data       Path to map_data (default: MAP_DATA_PATH or ../map_data)
   --mode           all, cities, companies (default: all)
   --max-issues     Max disconnected pairs printed/stored per dataset (default: 100, 0 = all)
-  --candidate-radius  Spatial-index radius for destination snap candidates (default: 2)
+  --candidate-radius  Spatial-index radius for destination snap candidates (default: 8, matches production)
   --candidate-limit   Max destination candidates kept after de-duping components (default: 96, 0 = all)
   --json-out       Write a JSON report
+  --real-routing   Run the real A* (findRoute) between one company per city, one direction
+                   per unordered pair. Logs every route with gen time, km and ferry km.
+  --routing-mode   Routing cost model for --real-routing: fastest, shortest (default: fastest)
 `);
 }
 
@@ -170,6 +214,9 @@ function createRuntime(mapDataPath: string, game: string): Runtime {
   const componentIndex = new MainComponentIndex();
   componentIndex.build(graph.nodes, graph.adjacency);
 
+  // Mirror the production trap repair so the debugger validates the same graph.
+  reconnectDirectionalTraps(graph, componentIndex);
+
   const spatialIndex = new SpatialIndex(graph.nodes, graph.bounds);
   const outgoingNodes = new Set<string>();
   const incomingNodes = new Set<string>();
@@ -184,7 +231,9 @@ function createRuntime(mapDataPath: string, game: string): Runtime {
   const directedComponentIndex = new DirectedComponentIndex();
   directedComponentIndex.build(graph.nodes, graph.adjacency);
 
-  return { graph, componentIndex, directedComponentIndex, spatialIndex, outgoingNodes, incomingNodes };
+  const escapeSet = directedComponentIndex.componentsThatCanReach(directedComponentIndex.largestComponentId);
+
+  return { graph, componentIndex, directedComponentIndex, spatialIndex, outgoingNodes, incomingNodes, escapeSet };
 }
 
 function loadCities(mapDataPath: string, game: string, graph: LoadedGraph): DebugPoint[] {
@@ -305,6 +354,51 @@ function loadCompanyAnchors(
   }
 }
 
+interface CityLocation {
+  name: string;
+  x: number;
+  z: number;
+}
+
+/**
+ * Loads city centroids so any (x, z) can be tagged with its nearest city.
+ * Used to give companies a human-readable location for map cross-checking.
+ */
+function buildCityLocator(mapDataPath: string, game: string, graph: LoadedGraph): (x: number, z: number) => string | undefined {
+  const citiesPath = path.join(mapDataPath, game, 'geojson', 'cities.geojson');
+  if (!fs.existsSync(citiesPath)) return () => undefined;
+
+  const raw = JSON.parse(fs.readFileSync(citiesPath, 'utf8')) as {
+    features?: Array<{
+      geometry?: { type?: string; coordinates?: [number, number] };
+      properties?: { name?: string; localized_name?: string };
+    }>;
+  };
+
+  const cities: CityLocation[] = (raw.features ?? [])
+    .filter(f => f.geometry?.type === 'Point' && f.geometry.coordinates && f.properties?.name)
+    .map(f => {
+      const [lon, lat] = f.geometry!.coordinates!;
+      const [x, z] = wgs84ToGame(lon, lat, graph.bounds);
+      return { name: f.properties!.localized_name ?? f.properties!.name!, x, z };
+    });
+
+  return (x: number, z: number): string | undefined => {
+    let best: CityLocation | undefined;
+    let bestDistanceSq = Infinity;
+    for (const city of cities) {
+      const dx = city.x - x;
+      const dz = city.z - z;
+      const distanceSq = dx * dx + dz * dz;
+      if (distanceSq < bestDistanceSq) {
+        bestDistanceSq = distanceSq;
+        best = city;
+      }
+    }
+    return best?.name;
+  };
+}
+
 function loadCompanies(mapDataPath: string, game: string, graph: LoadedGraph): DebugPoint[] {
   const filePath = path.join(mapDataPath, game, 'geojson', 'companies.geojson');
   const raw = JSON.parse(fs.readFileSync(filePath, 'utf8')) as {
@@ -314,25 +408,33 @@ function loadCompanies(mapDataPath: string, game: string, graph: LoadedGraph): D
     }>;
   };
 
+  const nearestCity = buildCityLocator(mapDataPath, game, graph);
+
   return (raw.features ?? [])
     .filter(f => f.geometry?.type === 'Point' && f.geometry.coordinates && f.properties?.name)
     .map((f, index) => {
       const [lon, lat] = f.geometry!.coordinates!;
       const [x, z] = wgs84ToGame(lon, lat, graph.bounds);
       const id = f.properties?.id ?? `company-${index}`;
+      const cityName = nearestCity(x, z);
       return {
         kind: 'company',
         label: `${f.properties!.name} (${id}) #${index + 1}`,
         id,
         x,
         z,
+        cityName,
       };
     });
 }
 
 function snapPoints(points: DebugPoint[], rt: Runtime): void {
   const isInMain = (uid: string) => rt.componentIndex.isInMainComponent(uid);
-  const canDepart = (uid: string) => rt.outgoingNodes.has(uid);
+  const canDepart = (uid: string) => {
+    if (!rt.outgoingNodes.has(uid)) return false;
+    const component = rt.directedComponentIndex.componentOf(uid);
+    return component != null && rt.escapeSet.has(component);
+  };
   const canArrive = (uid: string) => rt.incomingNodes.has(uid);
 
   for (const point of points) {
@@ -396,14 +498,23 @@ function analyzeDataset(name: string, points: DebugPoint[], rt: Runtime, options
   let checkedPairs = 0;
   let disconnectedPairs = 0;
 
+  // Per-point failure tallies for aggregation.
+  const destFailCount = new Array<number>(points.length).fill(0);
+  const destCheckCount = new Array<number>(points.length).fill(0);
+  const originFailById = new Map<DebugPoint, { fail: number; total: number }>();
+
   for (const from of routableOrigins) {
     const startComponent = rt.directedComponentIndex.componentOf(from.startUid!);
     if (startComponent == null) continue;
+
+    const originTally = originFailById.get(from) ?? { fail: 0, total: 0 };
 
     for (let toIndex = 0; toIndex < points.length; toIndex++) {
       const to = points[toIndex];
       if (from === to) continue;
       checkedPairs++;
+      destCheckCount[toIndex]++;
+      originTally.total++;
 
       const cacheKey = `${startComponent}:${toIndex}`;
       let goal: ArrivalCandidate | undefined;
@@ -418,12 +529,77 @@ function analyzeDataset(name: string, points: DebugPoint[], rt: Runtime, options
 
       if (!goal) {
         disconnectedPairs++;
+        destFailCount[toIndex]++;
+        originTally.fail++;
         if (options.maxIssues === 0 || pairIssues.length < options.maxIssues) {
           pairIssues.push({ from, to, reason: 'no reachable destination snap' });
         }
       }
     }
+
+    originFailById.set(from, originTally);
   }
+
+  // A destination is a true "island" when no routable origin could reach it.
+  const unreachableDestinations: AggregatedPoint[] = [];
+  for (let i = 0; i < points.length; i++) {
+    if (destCheckCount[i] > 0 && destFailCount[i] === destCheckCount[i]) {
+      const p = points[i];
+      unreachableDestinations.push({
+        label: p.label, id: p.id, x: p.x, z: p.z,
+        cityName: p.cityName,
+        startUid: p.startUid, goalUid: p.goalUid,
+        failCount: destFailCount[i], totalCount: destCheckCount[i],
+      });
+    }
+  }
+
+  // An origin is "isolated" when it cannot reach any other point.
+  const isolatedOrigins: AggregatedPoint[] = [];
+  for (const [point, tally] of originFailById) {
+    if (tally.total > 0 && tally.fail === tally.total) {
+      isolatedOrigins.push({
+        label: point.label, id: point.id, x: point.x, z: point.z,
+        cityName: point.cityName,
+        startUid: point.startUid, goalUid: point.goalUid,
+        failCount: tally.fail, totalCount: tally.total,
+      });
+    }
+  }
+
+  // Partial offenders: points that fail many (but not all) pairs.
+  const isFullIsland = new Set<string>([
+    ...unreachableDestinations.map(p => p.id),
+  ]);
+  const isolatedOriginIds = new Set<string>(isolatedOrigins.map(p => p.id));
+
+  const worstDestinations: AggregatedPoint[] = [];
+  for (let i = 0; i < points.length; i++) {
+    if (destCheckCount[i] === 0 || destFailCount[i] === 0) continue;
+    if (destFailCount[i] === destCheckCount[i]) continue; // full island already listed
+    const p = points[i];
+    worstDestinations.push({
+      label: p.label, id: p.id, x: p.x, z: p.z,
+      cityName: p.cityName,
+      startUid: p.startUid, goalUid: p.goalUid,
+      failCount: destFailCount[i], totalCount: destCheckCount[i],
+    });
+  }
+  worstDestinations.sort((a, b) => b.failCount - a.failCount);
+
+  const worstOrigins: AggregatedPoint[] = [];
+  for (const [point, tally] of originFailById) {
+    if (tally.total === 0 || tally.fail === 0) continue;
+    if (tally.fail === tally.total) continue; // full island already listed
+    worstOrigins.push({
+      label: point.label, id: point.id, x: point.x, z: point.z,
+      cityName: point.cityName,
+      startUid: point.startUid, goalUid: point.goalUid,
+      failCount: tally.fail, totalCount: tally.total,
+    });
+  }
+  worstOrigins.sort((a, b) => b.failCount - a.failCount);
+  void isFullIsland; void isolatedOriginIds;
 
   return {
     name,
@@ -432,11 +608,16 @@ function analyzeDataset(name: string, points: DebugPoint[], rt: Runtime, options
     disconnectedPairs,
     snapIssues,
     pairIssues,
+    unreachableDestinations,
+    isolatedOrigins,
+    worstDestinations: worstDestinations.slice(0, 20),
+    worstOrigins: worstOrigins.slice(0, 20),
     elapsedMs: Date.now() - startedAt,
   };
 }
 
 function printResult(result: DatasetResult): void {
+  const cityTag = (cityName?: string): string => (cityName ? ` city="${cityName}"` : '');
   const ok = result.disconnectedPairs === 0 && result.snapIssues.length === 0;
   console.log('');
   console.log(`[${result.name}] ${ok ? 'OK' : 'DISCONNECTIONS FOUND'}`);
@@ -444,22 +625,137 @@ function printResult(result: DatasetResult): void {
   console.log(`  Checked ordered pairs: ${result.checkedPairs}`);
   console.log(`  Snap issues: ${result.snapIssues.length}`);
   console.log(`  Disconnected pairs: ${result.disconnectedPairs}`);
+  console.log(`  Island destinations (unreachable from everyone): ${result.unreachableDestinations.length}`);
+  console.log(`  Island origins (cannot reach anyone): ${result.isolatedOrigins.length}`);
   console.log(`  Time: ${result.elapsedMs}ms`);
-
   for (const point of result.snapIssues) {
-    console.log(`  SNAP: ${point.label} [${point.id}] anchor=${point.anchorType ?? 'n/a'} at (${point.x.toFixed(1)}, ${point.z.toFixed(1)}) - ${point.snapError}`);
+    console.log(`  SNAP: ${point.label} [${point.id}]${cityTag(point.cityName)} anchor=${point.anchorType ?? 'n/a'} at (${point.x.toFixed(1)}, ${point.z.toFixed(1)}) - ${point.snapError}`);
+  }
+
+  for (const point of result.unreachableDestinations) {
+    console.log(
+      `  ISLAND-DEST: ${point.label} [${point.id}]${cityTag(point.cityName)} goal=${point.goalUid ?? 'n/a'} ` +
+      `at (${point.x.toFixed(1)}, ${point.z.toFixed(1)})`,
+    );
+  }
+
+  for (const point of result.isolatedOrigins) {
+    console.log(
+      `  ISLAND-ORIGIN: ${point.label} [${point.id}]${cityTag(point.cityName)} start=${point.startUid ?? 'n/a'} ` +
+      `at (${point.x.toFixed(1)}, ${point.z.toFixed(1)})`,
+    );
+  }
+
+  if (result.worstOrigins.length > 0) {
+    console.log(`  -- worst partial origins (can't reach N destinations) --`);
+    for (const point of result.worstOrigins) {
+      console.log(
+        `  ORIGIN x${point.failCount}/${point.totalCount}: ${point.label} [${point.id}]${cityTag(point.cityName)} ` +
+        `start=${point.startUid ?? 'n/a'} at (${point.x.toFixed(1)}, ${point.z.toFixed(1)})`,
+      );
+    }
+  }
+
+  if (result.worstDestinations.length > 0) {
+    console.log(`  -- worst partial destinations (unreachable from N origins) --`);
+    for (const point of result.worstDestinations) {
+      console.log(
+        `  DEST x${point.failCount}/${point.totalCount}: ${point.label} [${point.id}]${cityTag(point.cityName)} ` +
+        `goal=${point.goalUid ?? 'n/a'} at (${point.x.toFixed(1)}, ${point.z.toFixed(1)})`,
+      );
+    }
   }
 
   for (const issue of result.pairIssues) {
     console.log(
-      `  ROUTE: ${issue.from.label} [${issue.from.startUid}] -> ` +
-      `${issue.to.label} [${issue.goalUid ?? issue.to.goalUid ?? 'no-goal'}] - ${issue.reason}`,
+      `  ROUTE: ${issue.from.label} [${issue.from.startUid}]${cityTag(issue.from.cityName)} -> ` +
+      `${issue.to.label} [${issue.goalUid ?? issue.to.goalUid ?? 'no-goal'}]${cityTag(issue.to.cityName)} - ${issue.reason}`,
     );
   }
 
   if (result.disconnectedPairs > result.pairIssues.length) {
     console.log(`  ... ${result.disconnectedPairs - result.pairIssues.length} more disconnected pairs hidden by --max-issues`);
   }
+}
+
+function oneCompanyPerCity(companies: DebugPoint[]): DebugPoint[] {
+  const byCity = new Map<string, DebugPoint>();
+  for (const company of companies) {
+    if (!company.cityName) continue;
+    if (!byCity.has(company.cityName)) byCity.set(company.cityName, company);
+  }
+  return [...byCity.values()];
+}
+
+function analyzeRealRouting(points: DebugPoint[], rt: Runtime, options: Options): void {
+  const startedAt = Date.now();
+
+  const originIndexes = points.map((p, i) => (p.startUid ? i : -1)).filter(i => i >= 0);
+  const destFlags = points.map(p => Boolean(p.goalUid));
+  const destCount = destFlags.filter(Boolean).length;
+
+  // One direction per unordered pair: for i < j we test i -> j only.
+  let totalPairs = 0;
+  for (const i of originIndexes) {
+    for (let j = i + 1; j < points.length; j++) {
+      if (destFlags[j]) totalPairs++;
+    }
+  }
+
+  console.log('');
+  console.log(`[real-routing] points=${points.length} origins=${originIndexes.length} destinations=${destCount}`);
+  console.log(`[real-routing] mode=${options.routingMode} pairs to test (one direction)=${totalPairs}`);
+  console.log('');
+
+  let tested = 0;
+  let routed = 0;
+  let noRoute = 0;
+  let sumGenMs = 0;
+  let maxGenMs = 0;
+
+  for (const i of originIndexes) {
+    const from = points[i];
+    const startUid = from.startUid!;
+    const fromLabel = from.cityName ?? from.label;
+
+    for (let j = i + 1; j < points.length; j++) {
+      const to = points[j];
+      if (!to.goalUid) continue;
+      const toLabel = to.cityName ?? to.label;
+
+      tested++;
+      const t0 = performance.now();
+      const result = findRoute(startUid, to.goalUid, rt.graph.nodes, rt.graph.adjacency, {
+        mode: options.routingMode,
+      });
+      const genMs = performance.now() - t0;
+      sumGenMs += genMs;
+      if (genMs > maxGenMs) maxGenMs = genMs;
+
+      const label = `${fromLabel} -> ${toLabel}`;
+
+      if (result) {
+        routed++;
+        const km = result.totalLength / 1000;
+        const ferryKm = result.ferryLength / 1000;
+        console.log(
+          `[route] ${label} | ${genMs.toFixed(1)}ms | ${km.toFixed(1)}km | ferry ${ferryKm.toFixed(1)}km`,
+        );
+      } else {
+        noRoute++;
+        console.log(`[route] ${label} | ${genMs.toFixed(1)}ms | NO ROUTE`);
+      }
+    }
+  }
+
+  const elapsedMs = Date.now() - startedAt;
+  console.log('');
+  console.log(`[real-routing] DONE in ${(elapsedMs / 1000).toFixed(1)}s`);
+  console.log(`  Tested pairs (one direction): ${tested}`);
+  console.log(`  Routed: ${routed}`);
+  console.log(`  No route: ${noRoute}`);
+  console.log(`  Avg gen time: ${tested > 0 ? (sumGenMs / tested).toFixed(1) : '0'}ms`);
+  console.log(`  Max gen time: ${maxGenMs.toFixed(1)}ms`);
 }
 
 async function main(): Promise<void> {
@@ -478,6 +774,16 @@ async function main(): Promise<void> {
     `largest=${rt.directedComponentIndex.largestComponentSize}`,
   );
   console.log(`[RoutingDebug] destination candidates radius=${options.candidateRadius} limit=${options.candidateLimit || 'all'}`);
+
+  // findRoute-only mode: skip all topological analysis and stream every route.
+  if (options.realRouting) {
+    const companies = loadCompanies(options.mapDataPath, options.game, rt.graph);
+    const perCity = oneCompanyPerCity(companies);
+    snapPoints(perCity, rt);
+    analyzeRealRouting(perCity, rt, options);
+    console.log(`\n[RoutingDebug] total time ${((Date.now() - startedAt) / 1000).toFixed(1)}s`);
+    return;
+  }
 
   const results: DatasetResult[] = [];
 

@@ -381,15 +381,18 @@ namespace TsMap
                         {
                             if (key == "price")
                             {
-                                conn.Price = int.Parse(value, CultureInfo.InvariantCulture);
+                                if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var price))
+                                    conn.Price = (int)price;
                             }
                             else if (key == "time")
                             {
-                                conn.TimeMinutes = int.Parse(value, CultureInfo.InvariantCulture);
+                                if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var time))
+                                    conn.TimeMinutes = (int)time;
                             }
                             else if (key == "distance")
                             {
-                                conn.DistanceKm = int.Parse(value, CultureInfo.InvariantCulture);
+                                if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var distance))
+                                    conn.DistanceKm = (int)distance;
                             }
                             else if (key.Contains("connection_positions"))
                             {

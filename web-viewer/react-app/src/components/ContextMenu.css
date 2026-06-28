@@ -1,0 +1,35 @@
+.ctx-menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+}
+
+.ctx-menu {
+  position: absolute;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  min-width: 160px;
+  background: rgba(18, 18, 18, 0.96);
+  border: 1px solid #444;
+  border-radius: 6px;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.ctx-menu__item {
+  padding: 7px 12px;
+  color: #ddd;
+  cursor: pointer;
+  border-radius: 4px;
+  user-select: none;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+
+.ctx-menu__item:hover {
+  background: rgba(0, 230, 118, 0.16);
+  color: #fff;
+}
