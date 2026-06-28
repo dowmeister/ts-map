@@ -318,16 +318,16 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   flex-shrink: 0;
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.06);
   color: #E8EEF2;
-  font-size: 14px;
-  line-height: 1;
+  font-size: 13px;
 }
 
+.rp-step--turn .rp-step-icon   { color: #fff; }
 .rp-step--exit .rp-step-icon,
 .rp-step--merge .rp-step-icon { background: rgba(0, 212, 255, 0.18); color: #00D4FF; }
 .rp-step--ferry .rp-step-icon,

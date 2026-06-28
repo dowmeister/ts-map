@@ -1,65 +1,76 @@
 import { useState, useEffect } from 'react'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import {
+  faArrowLeft,
+  faArrowRight,
+  faArrowUp,
+  faArrowsLeftRight,
+  faRotateLeft,
+  faTurnDown,
+  faTurnUp,
+  faLocationDot,
+  faFlagCheckered,
+  faCircleDot,
+  faShip,
+  faAnchor,
+  faRoad,
+  faSignHanging,
+} from '@fortawesome/free-solid-svg-icons'
 import { useRoute } from '../hooks/useRoute'
 import { useCompanies } from '../hooks/useCompanies'
 import { mapToGameCoords, gameToMapCoords } from '../utils/coordinates'
 import './RoutePlanner.css'
 
 // ── Turn-by-turn formatting ──────────────────────────────────────────────────
-const MANEUVER_ICON = {
-  depart: '●',
-  via: '◉',
-  arrive: '⚑',
-  ferry: '⛴',
-  'ferry-exit': '⚓',
-  exit: '⤴',
-  merge: '⤚',
-  'turn-left': '↰',
-  'turn-right': '↱',
-  'slight-left': '↖',
-  'slight-right': '↗',
-  'sharp-left': '⬅',
-  'sharp-right': '➡',
-  uturn: '↶',
-  straight: '↑',
+
+// Maps modifier → { icon, transform } for turn maneuvers.
+const TURN_ICON = {
+  'slight-left':  { icon: faTurnUp,    flip: 'horizontal' },
+  'slight-right': { icon: faTurnUp,    flip: undefined },
+  'left':         { icon: faArrowLeft,  flip: undefined },
+  'right':        { icon: faArrowRight, flip: undefined },
+  'sharp-left':   { icon: faArrowLeft,  flip: undefined },
+  'sharp-right':  { icon: faArrowRight, flip: undefined },
+  'uturn':        { icon: faRotateLeft, flip: undefined },
 }
 
 function maneuverIcon(m) {
-  if (m.type === 'turn' || m.type === 'exit' || m.type === 'merge') {
-    if (m.modifier && MANEUVER_ICON[m.modifier]) {
-      if (m.modifier === 'left' || m.modifier === 'right') return MANEUVER_ICON[`turn-${m.modifier}`]
-      return MANEUVER_ICON[m.modifier]
-    }
-  }
-  return MANEUVER_ICON[m.type] || '•'
-}
-
-function sideLabel(modifier) {
-  switch (modifier) {
-    case 'slight-left':  return 'leggermente a sinistra'
-    case 'slight-right': return 'leggermente a destra'
-    case 'sharp-left':   return 'secca a sinistra'
-    case 'sharp-right':  return 'secca a destra'
-    case 'left':         return 'a sinistra'
-    case 'right':        return 'a destra'
-    case 'uturn':        return 'inverti il senso'
-    default:             return ''
-  }
+  if (m.type === 'turn') return TURN_ICON[m.modifier] ?? { icon: faArrowUp }
+  if (m.type === 'exit')       return { icon: faSignHanging }
+  if (m.type === 'merge')      return { icon: faRoad }
+  if (m.type === 'ferry')      return { icon: faShip }
+  if (m.type === 'ferry-exit') return { icon: faAnchor }
+  if (m.type === 'depart')     return { icon: faLocationDot }
+  if (m.type === 'arrive')     return { icon: faFlagCheckered }
+  if (m.type === 'via')        return { icon: faCircleDot }
+  return { icon: faArrowUp }
 }
 
 function maneuverLabel(m) {
   switch (m.type) {
-    case 'depart':     return 'Parti'
-    case 'arrive':     return 'Arrivo a destinazione'
-    case 'via':        return 'Tappa intermedia'
-    case 'ferry':      return 'Imbarco sul traghetto'
-    case 'ferry-exit': return 'Sbarca dal traghetto'
-    case 'merge':      return 'Immettiti in autostrada'
-    case 'exit':       return `Prendi l'uscita ${sideLabel(m.modifier)}`.trim()
-    case 'turn':
-      if (m.modifier === 'uturn') return 'Inverti il senso di marcia'
-      if (m.modifier === 'slight-left' || m.modifier === 'slight-right') return `Tieni ${sideLabel(m.modifier)}`
-      return `Svolta ${sideLabel(m.modifier)}`.trim()
-    default:           return 'Prosegui'
+    case 'depart':     return 'Depart'
+    case 'arrive':     return 'Arrive at destination'
+    case 'via':        return 'Via waypoint'
+    case 'ferry':      return 'Board ferry'
+    case 'ferry-exit': return 'Disembark ferry'
+    case 'merge':      return 'Merge onto motorway'
+    case 'exit': {
+      const s = m.modifier?.includes('right') ? 'right' : m.modifier?.includes('left') ? 'left' : ''
+      return s ? `Take exit on the ${s}` : 'Take exit'
+    }
+    case 'turn': {
+      if (m.modifier === 'uturn') return 'Make a U-turn'
+      const labels = {
+        'slight-left':  'Bear left',
+        'slight-right': 'Bear right',
+        'left':         'Turn left',
+        'right':        'Turn right',
+        'sharp-left':   'Turn sharp left',
+        'sharp-right':  'Turn sharp right',
+      }
+      return labels[m.modifier] ?? 'Continue'
+    }
+    default: return 'Continue'
   }
 }
 
@@ -78,9 +89,11 @@ function ManeuverList({ maneuvers, onSelect }) {
           key={i}
           className={`rp-step rp-step--${m.type}`}
           onClick={() => onSelect?.(m)}
-          title="Vai alla manovra"
+          title="Go to maneuver"
         >
-          <span className="rp-step-icon">{maneuverIcon(m)}</span>
+          <span className={`rp-step-icon rp-step-icon--${m.type}`}>
+            <FontAwesomeIcon icon={maneuverIcon(m).icon} flip={maneuverIcon(m).flip} fixedWidth />
+          </span>
           <span className="rp-step-text">{maneuverLabel(m)}</span>
           {i > 0 && m.type !== 'depart' && (
             <span className="rp-step-dist">{formatDistance(m.distanceFromPrevM)}</span>
