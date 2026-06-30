@@ -80,14 +80,54 @@ function formatDistance(meters) {
   return `${Math.round(meters / 10) * 10} m`
 }
 
-function ManeuverList({ maneuvers, onSelect }) {
+// ── Lane diagram (for exit maneuvers) ────────────────────────────────────────
+function LaneDiagram({ lanesApproach, side }) {
+  return (
+    <div className="mn-lanes">
+      {Array.from({ length: lanesApproach }, (_, i) => {
+        const isExit = side === 'right' ? i === lanesApproach - 1 : i === 0
+        const icon = isExit ? (side === 'right' ? faArrowRight : faArrowLeft) : faArrowUp
+        return (
+          <div key={i} className={`mn-lane ${isExit ? 'mn-lane--exit' : ''}`}>
+            <FontAwesomeIcon icon={icon} />
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Maneuver HUD card ─────────────────────────────────────────────────────────
+function ManeuverCard({ maneuver: m, onClose }) {
+  const ic = maneuverIcon(m)
+  return (
+    <div className="mn-card" role="dialog" aria-label="Maneuver detail">
+      <button className="mn-card-close" onClick={onClose} aria-label="Close">✕</button>
+
+      <div className="mn-card-dist">{formatDistance(m.distanceFromPrevM)}</div>
+
+      <div className="mn-card-body">
+        <span className={`mn-card-icon mn-card-icon--${m.type}`}>
+          <FontAwesomeIcon icon={ic.icon} flip={ic.flip} />
+        </span>
+        <span className="mn-card-label">{maneuverLabel(m)}</span>
+      </div>
+
+      {m.type === 'exit' && m.lanesApproach > 0 && (
+        <LaneDiagram lanesApproach={m.lanesApproach} side={m.side ?? 'right'} />
+      )}
+    </div>
+  )
+}
+
+function ManeuverList({ maneuvers, selected, onSelect }) {
   if (!maneuvers || maneuvers.length === 0) return null
   return (
     <ol className="rp-steps">
       {maneuvers.map((m, i) => (
         <li
           key={i}
-          className={`rp-step rp-step--${m.type}`}
+          className={`rp-step rp-step--${m.type}${selected === m ? ' rp-step--active' : ''}`}
           onClick={() => onSelect?.(m)}
           title="Go to maneuver"
         >
@@ -160,8 +200,9 @@ function WaypointDropdown({ cities, companies, value, onChange, placeholder }) {
   )
 }
 
-function RoutePlanner({ mapInstance, tileMapInfo, cities }) {
+function RoutePlanner({ mapInstance, tileMapInfo, cities, routeActionsRef }) {
   const [open, setOpen] = useState(false)
+  const [selectedManeuver, setSelectedManeuver] = useState(null)
   const game = tileMapInfo?.game || 'ets2'
   const companies = useCompanies(game)
 
@@ -178,6 +219,11 @@ function RoutePlanner({ mapInstance, tileMapInfo, cities }) {
     if (!wp || !tileMapInfo || !mapInstance) return
     const [lon, lat] = gameToMapCoords(wp.x, wp.z, tileMapInfo)
     mapInstance.flyTo({ center: [lon, lat], zoom: Math.max(mapInstance.getZoom(), 9), duration: 800 })
+  }
+
+  const handleManeuverSelect = (m) => {
+    flyTo(m)
+    setSelectedManeuver(prev => prev === m ? null : m)
   }
 
   // Map click handlers — active when panel is open
@@ -224,17 +270,6 @@ function RoutePlanner({ mapInstance, tileMapInfo, cities }) {
     }
   }, [mapInstance, tileMapInfo, open, addWaypoint, companies])
 
-  // Right-click anywhere on map → add via waypoint
-  useEffect(() => {
-    if (!mapInstance || !tileMapInfo || !open) return
-    const handleContextMenu = (e) => {
-      e.originalEvent?.preventDefault()
-      const [x, z] = mapToGameCoords(e.lngLat.lng, e.lngLat.lat, tileMapInfo)
-      addStopWithPoint({ name: `${Math.round(x)}, ${Math.round(z)}`, x: Math.round(x), z: Math.round(z) })
-    }
-    mapInstance.on('contextmenu', handleContextMenu)
-    return () => mapInstance.off('contextmenu', handleContextMenu)
-  }, [mapInstance, tileMapInfo, open, addStopWithPoint])
 
   // Left-click on route marker (circle or label) → remove it
   useEffect(() => {
@@ -269,11 +304,21 @@ function RoutePlanner({ mapInstance, tileMapInfo, cities }) {
     }
   }, [mapInstance, open, stops, setFrom, setTo, removeStop])
 
+  // Expose route actions to siblings (ContextMenu) via the shared ref
+  if (routeActionsRef) {
+    routeActionsRef.current = {
+      setFrom:  (pt) => { setFrom(pt);            setOpen(true) },
+      setTo:    (pt) => { setTo(pt);              setOpen(true) },
+      addVia:   (pt) => { addStopWithPoint(pt);   setOpen(true) },
+    }
+  }
+
   const toggleOption = (key) => setOptions(prev => ({ ...prev, [key]: !prev[key] }))
   const setMode = (m) => setOptions(prev => ({ ...prev, mode: m }))
 
   return (
-    <div className="rp-container">
+    <>
+      <div className="rp-container">
       <button
         className={`rp-toggle ${open ? 'rp-toggle--open' : ''}`}
         onClick={() => setOpen(v => !v)}
@@ -321,7 +366,7 @@ function RoutePlanner({ mapInstance, tileMapInfo, cities }) {
           </div>
 
           <button className="rp-btn-add-stop" onClick={addStop}>+ Add stop</button>
-          <div className="rp-hint">Right-click on map to add waypoint</div>
+          <div className="rp-hint">Right-click on map to set start, end, or via point</div>
 
           <div className="rp-mode-toggle">
             <button className={`rp-mode-btn ${options.mode === 'fastest' ? 'rp-mode-btn--active' : ''}`}
@@ -364,12 +409,24 @@ function RoutePlanner({ mapInstance, tileMapInfo, cities }) {
                   <span className="rp-result-ferry">⛴ {routeInfo.ferryLengthKm.toLocaleString()} km</span>
                 </div>
               )}
-              <ManeuverList maneuvers={routeInfo.maneuvers} onSelect={flyTo} />
+              <ManeuverList
+                maneuvers={routeInfo.maneuvers}
+                selected={selectedManeuver}
+                onSelect={handleManeuverSelect}
+              />
             </div>
           )}
         </div>
       )}
-    </div>
+      </div>
+
+      {selectedManeuver && (
+        <ManeuverCard
+          maneuver={selectedManeuver}
+          onClose={() => setSelectedManeuver(null)}
+        />
+      )}
+    </>
   )
 }
 

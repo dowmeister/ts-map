@@ -826,8 +826,9 @@ namespace TsMap.Routing
             if (lane.IndexOf("motorway",   StringComparison.OrdinalIgnoreCase) >= 0) return "motorway";
             if (lane.IndexOf("freeway",    StringComparison.OrdinalIgnoreCase) >= 0) return "freeway";
             if (lane.IndexOf("expressway", StringComparison.OrdinalIgnoreCase) >= 0) return "expressway";
-            if (lane.IndexOf("divided",    StringComparison.OrdinalIgnoreCase) >= 0) return "divided";
-            if (lane.IndexOf("slow_road",  StringComparison.OrdinalIgnoreCase) >= 0) return "slow_road";
+            if (lane.IndexOf("divided",      StringComparison.OrdinalIgnoreCase) >= 0) return "divided";
+            if (lane.IndexOf("high_density", StringComparison.OrdinalIgnoreCase) >= 0) return "divided";
+            if (lane.IndexOf("slow_road",    StringComparison.OrdinalIgnoreCase) >= 0) return "slow_road";
             if (lane.IndexOf("slow road",  StringComparison.OrdinalIgnoreCase) >= 0) return "slow_road";
             return null;
         }

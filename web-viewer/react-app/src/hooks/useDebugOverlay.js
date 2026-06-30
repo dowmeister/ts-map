@@ -218,11 +218,15 @@ export function useDebugOverlay(mapInstance, tileMapInfo, graphEnabled, issuesEn
         from: <code>${p.from}</code><br/>
         to: <code>${p.to}</code><br/>
         kind: <b>${p.kind}</b><br/>
+        <b>speedClass: <span style="color:#f90">${p.speedClass || '?'}</span></b><br/>
+        ${p.laneName ? `laneName: <code>${p.laneName}</code><br/>` : ''}
+        ${p.speedLimitKph != null ? `speedLimit: <code>${p.speedLimitKph} km/h</code><br/>` : ''}
+        ${p.lanes != null ? `lanes: <code>${p.lanes}</code><br/>` : ''}
+        ${p.weight != null ? `weight: <code>${Number(p.weight).toFixed(1)}</code> / len: <code>${Number(p.length).toFixed(1)}</code><br/>` : ''}
         lane: <code>${p.lane || ''}</code><br/>
         source: <code>${p.sourceUid || ''}</code><br/>
         direction: <code>${p.direction || ''}</code><br/>
         traffic: <code>${p.trafficSide || ''}</code><br/>
-        temp LHT: <code>${String(p.isTemporaryLeftHandTrafficRoad ?? '')}</code><br/>
         mid: <code>${Number(p.midX ?? 0).toFixed(1)}, ${Number(p.midZ ?? 0).toFixed(1)}</code><br/>
         path raw: <code>${p.pathStartRawNodeUid || ''} -> ${p.pathEndRawNodeUid || ''}</code>`)
       .addTo(mapInstance)

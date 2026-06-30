@@ -58,6 +58,11 @@ const HEURISTIC_WEIGHT = 1.6;
 const MAX_EXPANSIONS = 2_000_000;
 const LANE_CHANGE_COST_METERS = 10;
 const LOCAL_DETOUR_MULTIPLIER_IN_SHORTEST = 1.45;
+// Penalty for the first step off a motorway/expressway onto a local-speed prefab
+// (service area, slip road, etc.). Without this, the lane-based graph lets the
+// A* shortcut through service areas that are geometrically shorter than the
+// slight highway curve they bypass.
+const HIGHWAY_EXIT_PENALTY_METERS = 500;
 const FERRY_BOARDING_PENALTY_METERS = 5_000;
 const FERRY_FALLBACK_PENALTY_METERS = 150_000;
 const FERRY_FALLBACK_MULTIPLIER = 1.5;
@@ -169,6 +174,19 @@ export function findRoute(
           extraCost += FERRY_FALLBACK_PENALTY_METERS;
           if (options?.mode !== 'shortest') weightMult *= FERRY_FALLBACK_MULTIPLIER;
         }
+      }
+
+      // Highway-exit penalty: entering a local-speed prefab from a motorway/expressway.
+      // In the lane-based graph, service area prefabs snap to highway lane endpoints at
+      // different positions along the road, creating a bypass path that can be
+      // geometrically shorter than the (slightly curved) highway segment it skips.
+      // A fixed penalty makes such detours unattractive without blocking legitimate
+      // exits when the destination is genuinely off the highway.
+      if (prevEdge &&
+          (prevEdge.speedClass === 'motorway' || prevEdge.speedClass === 'expressway' || prevEdge.speedClass === 'divided') &&
+          edge.itemType === 'prefab' &&
+          edge.speedClass === 'local_road') {
+        extraCost += HIGHWAY_EXIT_PENALTY_METERS;
       }
 
       // Ferry→ferry direction change penalty: if we just arrived by ferry and the

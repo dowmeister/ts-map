@@ -33,3 +33,9 @@
   background: rgba(0, 230, 118, 0.16);
   color: #fff;
 }
+
+.ctx-menu__separator {
+  height: 1px;
+  margin: 4px 6px;
+  background: #444;
+}

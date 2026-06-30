@@ -1,7 +1,7 @@
 import type { GraphEdge, GraphNode, MapBounds, RouteResult } from './types';
 import { ets2ToWgs84 } from './coordinates';
 
-export type ManeuverType = 'turn';
+export type ManeuverType = 'turn' | 'exit';
 
 export type ManeuverModifier =
   | 'slight-left'
@@ -32,6 +32,10 @@ export interface Maneuver {
   distanceFromStartM: number;
   /** Display distance travelled since the previous maneuver, in metres. */
   distanceFromPrevM: number;
+  /** Lane count on the approach road (only for 'exit'). */
+  lanesApproach?: number;
+  /** Lane count on the departure road (only for 'exit'). */
+  lanesDepart?: number;
 }
 
 interface GamePoint {
@@ -195,22 +199,23 @@ export function buildManeuvers(
     const fwd = walk(points, e, 1, TANGENT_DISTANCE);
     if (back.traveled < MIN_TANGENT_DISTANCE || fwd.traveled < MIN_TANGENT_DISTANCE) continue;
 
+    // Approach/depart edges are the road edges that walk() landed on — not the
+    // prefab edges at s/e, which have no lanes field.
+    const approachEdge = edges[points[back.idx].edgeIndex];
+    const departEdge   = edges[points[fwd.idx].edgeIndex];
+    const lanesApproach = approachEdge?.lanes ?? 0;
+    const lanesDepart   = departEdge?.lanes ?? 0;
+
     const entryLL = toLL(points[s]);
     const exitLL = toLL(points[e]);
     const bearingBefore = mapBearing(toLL(points[back.idx]), entryLL);
     const bearingAfter = mapBearing(exitLL, toLL(points[fwd.idx]));
     const turn = angleDiff(bearingAfter, bearingBefore);
 
-    // Going (roughly) straight through the junction is not a turn.
-    if (Math.abs(turn) < TURN_THRESHOLD_DEG) continue;
-
     const midIdx = (s + e) >> 1;
     const mid = points[midIdx];
     const midLL = toLL(mid);
-    raw.push({
-      type: 'turn',
-      modifier: modifierFor(turn),
-      side: turn >= 0 ? 'right' : 'left',
+    const base = {
       x: mid.x,
       z: mid.z,
       lon: midLL[0],
@@ -220,16 +225,46 @@ export function buildManeuvers(
       turnAngle: Math.round(turn),
       distanceFromStartM: Math.round(arc[midIdx] * displayScale),
       distanceFromPrevM: 0,
+    };
+
+    // Highway exit: lanes drop to a single-lane ramp AND we were on a highway.
+    // A 4→3 or 3→2 change is just a motorway narrowing, not an exit; true exit ramps have 1 lane.
+    const isHighway = (e: GraphEdge | undefined) =>
+      !!e && (e.speedClass === 'motorway' || e.speedClass === 'expressway');
+    const isExitRamp = lanesApproach >= 2 && lanesDepart === 1 && isHighway(approachEdge);
+    if (isExitRamp) {
+      raw.push({
+        ...base,
+        type: 'exit',
+        modifier: modifierFor(turn),
+        side: turn >= 0 ? 'right' : 'left',
+        lanesApproach,
+        lanesDepart,
+      });
+      continue;
+    }
+
+    // Regular turn: angle above threshold but no lane reduction exit.
+    if (Math.abs(turn) < TURN_THRESHOLD_DEG) continue;
+
+    raw.push({
+      type: 'turn',
+      modifier: modifierFor(turn),
+      side: turn >= 0 ? 'right' : 'left',
+      ...base,
     });
   }
 
   // Collapse turns whose anchors almost coincide (adjacent prefab runs in a
-  // complex junction) — keep the sharper one.
+  // complex junction) — keep the sharper one, or 'exit' over 'turn'.
   const list: Maneuver[] = [];
   for (const m of raw) {
     const prev = list[list.length - 1];
     if (prev && gameDistance([prev.x, prev.z], [m.x, m.z]) < DEDUP_DISTANCE) {
-      if (Math.abs(m.turnAngle) > Math.abs(prev.turnAngle)) list[list.length - 1] = m;
+      const mBetter =
+        (m.type === 'exit' && prev.type !== 'exit') ||
+        (m.type === prev.type && Math.abs(m.turnAngle) > Math.abs(prev.turnAngle));
+      if (mBetter) list[list.length - 1] = m;
       continue;
     }
     list.push(m);

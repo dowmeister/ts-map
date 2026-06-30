@@ -175,6 +175,7 @@ namespace TsMap.Routing
                     jw.WritePropertyName("kind"); jw.WriteValue(edge.Kind);
                     jw.WritePropertyName("sourceUid"); jw.WriteValue(edge.SourceUid);
                     jw.WritePropertyName("lane"); jw.WriteValue(edge.Lane);
+                    jw.WritePropertyName("laneName"); jw.WriteValue(edge.LaneName ?? "");
                     jw.WritePropertyName("speedClass"); jw.WriteValue(edge.SpeedClass);
                     jw.WritePropertyName("isSecret"); jw.WriteValue(edge.IsSecret);
                     jw.WritePropertyName("direction"); jw.WriteValue(edge.Direction);
@@ -439,6 +440,7 @@ namespace TsMap.Routing
             jw.WritePropertyName("kind"); jw.WriteValue(edge.Kind);
             jw.WritePropertyName("sourceUid"); jw.WriteValue(edge.SourceUid);
             jw.WritePropertyName("lane"); jw.WriteValue(edge.Lane);
+            jw.WritePropertyName("laneName"); jw.WriteValue(edge.LaneName ?? "");
             jw.WritePropertyName("speedClass"); jw.WriteValue(edge.SpeedClass);
             jw.WritePropertyName("isSecret"); jw.WriteValue(edge.IsSecret);
             jw.WritePropertyName("direction"); jw.WriteValue(edge.Direction);
@@ -573,6 +575,7 @@ namespace TsMap.Routing
                 {
                     jw.WritePropertyName("direction"); jw.WriteValue(edge.Direction);
                     jw.WritePropertyName("speedClass"); jw.WriteValue(edge.SpeedClass);
+                    jw.WritePropertyName("laneName"); jw.WriteValue(edge.LaneName ?? "");
                     jw.WritePropertyName("isSecret"); jw.WriteValue(edge.IsSecret);
                     jw.WritePropertyName("trafficSide"); jw.WriteValue(edge.TrafficSide);
                     jw.WritePropertyName("isTemporaryLeftHandTrafficRoad"); jw.WriteValue(edge.IsTemporaryLeftHandTrafficRoad);
@@ -620,7 +623,8 @@ namespace TsMap.Routing
                         invertRoadLaneDirection,
                         roadMidX,
                         roadMidZ,
-                        speedClass);
+                        speedClass,
+                        lane < road.RoadLook.LanesRight.Count ? road.RoadLook.LanesRight[lane] : null);
                 }
 
                 for (int lane = 0; lane < leftCount; lane++)
@@ -639,7 +643,8 @@ namespace TsMap.Routing
                         invertRoadLaneDirection,
                         roadMidX,
                         roadMidZ,
-                        speedClass);
+                        speedClass,
+                        lane < road.RoadLook.LanesLeft.Count ? road.RoadLook.LanesLeft[lane] : null);
                 }
             }
         }
@@ -693,6 +698,9 @@ namespace TsMap.Routing
             if (lane.IndexOf("freeway", StringComparison.OrdinalIgnoreCase) >= 0) return "freeway";
             if (lane.IndexOf("expressway", StringComparison.OrdinalIgnoreCase) >= 0) return "expressway";
             if (lane.IndexOf("divided", StringComparison.OrdinalIgnoreCase) >= 0) return "divided";
+            // high_density = multi-lane national highway (e.g. Danish E45, German B-roads);
+            // not a motorway but clearly faster/higher-priority than a local road.
+            if (lane.IndexOf("high_density", StringComparison.OrdinalIgnoreCase) >= 0) return "divided";
             if (lane.IndexOf("slow_road", StringComparison.OrdinalIgnoreCase) >= 0) return "slow_road";
             if (lane.IndexOf("slow road", StringComparison.OrdinalIgnoreCase) >= 0) return "slow_road";
             return null;
@@ -709,7 +717,8 @@ namespace TsMap.Routing
             bool isTemporaryLeftHandTrafficRoad = false,
             float midX = 0f,
             float midZ = 0f,
-            string speedClass = "local_road")
+            string speedClass = "local_road",
+            string laneName = null)
         {
             if (path == null || path.Length < 2) return;
 
@@ -728,6 +737,7 @@ namespace TsMap.Routing
                 Kind = "road",
                 SourceUid = road.Uid.ToString("X"),
                 Lane = lane,
+                LaneName = laneName,
                 SpeedClass = speedClass,
                 IsSecret = road.IsSecret,
                 Direction = forward ? "start-to-end" : "end-to-start",
@@ -2071,6 +2081,7 @@ namespace TsMap.Routing
             public string Kind;
             public string SourceUid;
             public string Lane;
+            public string LaneName;   // raw lane template name (e.g. "motorway_2")
             public string SpeedClass;
             public bool IsSecret;
             public string Direction;

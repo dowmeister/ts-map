@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { mapToGameCoords } from '../utils/coordinates'
 import './ContextMenu.css'
 
-function ContextMenu({ mapInstance, tileMapInfo }) {
+function ContextMenu({ mapInstance, tileMapInfo, routeActionsRef }) {
   const [menu, setMenu] = useState(null)
   const [copied, setCopied] = useState(false)
 
@@ -84,6 +84,30 @@ function ContextMenu({ mapInstance, tileMapInfo }) {
     }
   }, [menu, tileMapInfo, close])
 
+  const makeRoutePoint = useCallback(() => {
+    if (!menu || !tileMapInfo) return null
+    const [x, z] = mapToGameCoords(menu.lng, menu.lat, tileMapInfo)
+    return { name: `${Math.round(x)}, ${Math.round(z)}`, x: Math.round(x), z: Math.round(z) }
+  }, [menu, tileMapInfo])
+
+  const handleSetRouteFrom = useCallback(() => {
+    const pt = makeRoutePoint()
+    if (pt) routeActionsRef?.current?.setFrom?.(pt)
+    close()
+  }, [makeRoutePoint, routeActionsRef, close])
+
+  const handleSetRouteTo = useCallback(() => {
+    const pt = makeRoutePoint()
+    if (pt) routeActionsRef?.current?.setTo?.(pt)
+    close()
+  }, [makeRoutePoint, routeActionsRef, close])
+
+  const handleAddVia = useCallback(() => {
+    const pt = makeRoutePoint()
+    if (pt) routeActionsRef?.current?.addVia?.(pt)
+    close()
+  }, [makeRoutePoint, routeActionsRef, close])
+
   if (!menu) return null
 
   return (
@@ -93,6 +117,14 @@ function ContextMenu({ mapInstance, tileMapInfo }) {
         style={{ left: `${menu.x}px`, top: `${menu.y}px` }}
         onClick={(e) => e.stopPropagation()}
       >
+        {routeActionsRef && tileMapInfo && (
+          <>
+            <li className="ctx-menu__item" onClick={handleSetRouteFrom}>Set as start (A)</li>
+            <li className="ctx-menu__item" onClick={handleSetRouteTo}>Set as destination (B)</li>
+            <li className="ctx-menu__item" onClick={handleAddVia}>Add as via point</li>
+            <li className="ctx-menu__separator" />
+          </>
+        )}
         <li className="ctx-menu__item" onClick={handleCopyCoords}>
           {copied ? 'Copied!' : 'Copy coordinates'}
         </li>

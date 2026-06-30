@@ -33,6 +33,23 @@ namespace TsMap.Routing
                 graph.Nodes[node.Id] = new LaneRoutingNode(node.Id, node.X, node.Z);
             }
 
+            // Pre-compute lane counts per road segment.
+            // Node IDs for road edges follow the pattern "road:{uid}:{side}:{laneIdx}:start".
+            // Group by "road:{uid}:{side}" and find the highest lane index to get the total count.
+            var maxLaneIndex = new Dictionary<string, int>();
+            foreach (var edge in snapshot.Edges)
+            {
+                if (!IsRoutableEdge(edge)) continue;
+                var parts = edge.From.Split(':');
+                // Expected: ["road", uid, side, laneIdx, "start"]
+                if (parts.Length >= 5 && parts[0] == "road" && int.TryParse(parts[3], out var laneIdx))
+                {
+                    string roadKey = parts[0] + ":" + parts[1] + ":" + parts[2]; // road:{uid}:{side}
+                    maxLaneIndex.TryGetValue(roadKey, out var cur);
+                    if (laneIdx > cur) maxLaneIndex[roadKey] = laneIdx;
+                }
+            }
+
             foreach (var edge in snapshot.Edges)
             {
                 if (!IsRoutableEdge(edge)) continue;
@@ -46,6 +63,18 @@ namespace TsMap.Routing
                 if (length < 0.001f && IsConnectorEdge(edge.Kind)) zeroLengthConnectors++;
                 edgeTypeCounts.TryGetValue(itemType, out var edgeTypeCount);
                 edgeTypeCounts[itemType] = edgeTypeCount + 1;
+
+                int lanes = 0;
+                if (itemType == "road")
+                {
+                    var parts = edge.From.Split(':');
+                    if (parts.Length >= 5 && parts[0] == "road")
+                    {
+                        string roadKey = parts[0] + ":" + parts[1] + ":" + parts[2];
+                        lanes = maxLaneIndex.TryGetValue(roadKey, out var mx) ? mx + 1 : 1;
+                    }
+                }
+
                 graph.Edges.Add(new LaneRoutingEdge(
                     edge.From,
                     edge.To,
@@ -53,7 +82,8 @@ namespace TsMap.Routing
                     length,
                     speedClass,
                     itemType,
-                    edge.Path));
+                    edge.Path,
+                    lanes: lanes));
             }
 
             AddRoadLaneChangeEdges(snapshot, graph, edgeTypeCounts);

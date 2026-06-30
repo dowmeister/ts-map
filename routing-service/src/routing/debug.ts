@@ -35,6 +35,8 @@ type LaneGraphDebugEdge = {
   kind: string;
   sourceUid?: string;
   lane?: string;
+  laneName?: string;
+  speedClass?: string;
   direction?: string;
   trafficSide?: string;
   isTemporaryLeftHandTrafficRoad?: boolean;
@@ -634,6 +636,8 @@ export async function laneGraphDebugHandler(req: Request, res: Response): Promis
         kind: edge.kind,
         sourceUid: edge.sourceUid,
         lane: edge.lane,
+        laneName: edge.laneName,
+        speedClass: edge.speedClass,
         direction: edge.direction,
         trafficSide: edge.trafficSide,
         isTemporaryLeftHandTrafficRoad: edge.isTemporaryLeftHandTrafficRoad,
@@ -656,6 +660,7 @@ export async function laneGraphDebugHandler(req: Request, res: Response): Promis
           kind: edge.kind,
           sourceUid: edge.sourceUid,
           lane: edge.lane,
+          speedClass: edge.speedClass,
           direction: edge.direction,
           trafficSide: edge.trafficSide,
           isTemporaryLeftHandTrafficRoad: edge.isTemporaryLeftHandTrafficRoad,

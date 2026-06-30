@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import MapViewer from './components/MapViewer'
 import GameSwitcher from './components/GameSwitcher'
 import CitySelector from './components/CitySelector'
@@ -48,6 +48,8 @@ function App() {
   const [debugEnabled, setDebugEnabled] = useState(false)
   const [debugIssuesEnabled, setDebugIssuesEnabled] = useState(false)
   const [debugSoftIssuesEnabled, setDebugSoftIssuesEnabled] = useState(false)
+
+  const routeActionsRef = useRef({})
 
   const tileMapInfo = useTileMapInfo(currentGame)
   const cities = useCities(currentGame)
@@ -111,10 +113,12 @@ function App() {
         mapInstance={mapInstance}
         tileMapInfo={tileMapInfo}
         cities={cities}
+        routeActionsRef={routeActionsRef}
       />
       <ContextMenu
         mapInstance={mapInstance}
         tileMapInfo={tileMapInfo}
+        routeActionsRef={routeActionsRef}
       />
       <MapViewer
         game={currentGame}

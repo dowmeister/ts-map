@@ -34,6 +34,12 @@ namespace TsMap.Routing
         public int FerryTimeMinutes { get; }
         public int FerryDistanceKm { get; }
         public int FerryPrice { get; }
+        /// <summary>
+        /// Total number of parallel lanes on this road segment in the same travel
+        /// direction. Only meaningful for <c>itemType == "road"</c>; 0 for prefab,
+        /// ferry, company_approach and other synthetic edges.
+        /// </summary>
+        public int Lanes { get; }
 
         public float SpeedLimitKph => GraphEdge.SpeedClassToKph(SpeedClass);
 
@@ -47,7 +53,8 @@ namespace TsMap.Routing
             float[][] waypoints = null,
             int ferryTimeMinutes = 0,
             int ferryDistanceKm = 0,
-            int ferryPrice = 0)
+            int ferryPrice = 0,
+            int lanes = 0)
         {
             From = from;
             To = to;
@@ -59,6 +66,7 @@ namespace TsMap.Routing
             FerryTimeMinutes = ferryTimeMinutes;
             FerryDistanceKm = ferryDistanceKm;
             FerryPrice = ferryPrice;
+            Lanes = lanes;
         }
     }
 }

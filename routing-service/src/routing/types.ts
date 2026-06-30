@@ -12,6 +12,8 @@ export interface GraphEdge {
   speedClass: string;
   speedLimitKph?: number;
   itemType: string;
+  /** Total lanes in this direction on the road segment. Present only for road edges. */
+  lanes?: number;
   ferryTimeMinutes?: number;
   ferryDistanceKm?: number;
   ferryPrice?: number;

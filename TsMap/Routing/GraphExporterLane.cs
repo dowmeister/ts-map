@@ -57,6 +57,10 @@ namespace TsMap.Routing
                     jw.WritePropertyName("speedClass"); jw.WriteValue(edge.SpeedClass);
                     jw.WritePropertyName("speedLimitKph"); jw.WriteValue(edge.SpeedLimitKph);
                     jw.WritePropertyName("itemType"); jw.WriteValue(edge.ItemType);
+                    if (edge.Lanes > 0)
+                    {
+                        jw.WritePropertyName("lanes"); jw.WriteValue(edge.Lanes);
+                    }
                     if (edge.ItemType == "ferry")
                     {
                         if (edge.FerryTimeMinutes > 0)
