@@ -163,7 +163,7 @@ sync_pmtiles() {
         --progress \
         --transfers 4 \
         --s3-upload-concurrency 4 \
-        --header-upload "Cache-Control: public, max-age=3600, must-revalidate" \
+        --header-upload "Cache-Control: public, max-age=31536000, immutable" \
         --header-upload "Content-Type: application/vnd.pmtiles" \
         --header-upload "x-amz-meta-uploaded: $(date +%s)" \
         --include "${game}*.pmtiles" \
