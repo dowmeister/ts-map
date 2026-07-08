@@ -85,20 +85,7 @@
 
 .rp-select {
   flex: 1;
-  background: rgba(40, 40, 40, 0.9);
-  border: 1px solid #555;
-  border-radius: 3px;
-  color: #ddd;
-  font-size: 12px;
-  padding: 4px 6px;
-  cursor: pointer;
-  outline: none;
   min-width: 0;
-}
-
-.rp-select:focus {
-  border-color: #00D4FF;
-  color: #fff;
 }
 
 .rp-btn-remove {

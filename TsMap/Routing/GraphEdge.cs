@@ -10,13 +10,19 @@ namespace TsMap.Routing
         public string ItemType { get; }
         // NavCurve path waypoints in game world coordinates [x, z]; null for road/ferry edges
         public float[][] Waypoints { get; }
+        // Official ferry connection data from the game's own ferry definitions
+        // (TsFerryConnection), used instead of a guessed scale factor. 0 = unknown.
+        public int FerryTimeMinutes { get; }
+        public int FerryDistanceKm { get; }
+        public int FerryPrice { get; }
 
         // Speed limit in km/h derived from SpeedClass — used by the routing service for
         // time-based "fastest" weighting and exported to routing-graph.json as metadata.
         public float SpeedLimitKph => SpeedClassToKph(SpeedClass);
 
         public GraphEdge(ulong from, ulong to, float weight, float length,
-                         string speedClass, string itemType, float[][] waypoints = null)
+                         string speedClass, string itemType, float[][] waypoints = null,
+                         int ferryTimeMinutes = 0, int ferryDistanceKm = 0, int ferryPrice = 0)
         {
             From       = from;
             To         = to;
@@ -25,6 +31,9 @@ namespace TsMap.Routing
             SpeedClass = speedClass;
             ItemType   = itemType;
             Waypoints  = waypoints;
+            FerryTimeMinutes = ferryTimeMinutes;
+            FerryDistanceKm  = ferryDistanceKm;
+            FerryPrice       = ferryPrice;
         }
 
         public static float SpeedClassToKph(string speedClass)

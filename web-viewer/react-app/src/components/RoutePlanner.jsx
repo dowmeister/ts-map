@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import Select from 'react-select'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import {
   faArrowLeft,
@@ -144,59 +145,99 @@ function ManeuverList({ maneuvers, selected, onSelect }) {
   )
 }
 
+// react-select styles matching the dark HUD theme
+const selectStyles = {
+  container: (base) => ({ ...base, flex: 1, minWidth: 0 }),
+  control: (base, state) => ({
+    ...base,
+    minHeight: 26,
+    background: 'rgba(40, 40, 40, 0.9)',
+    borderColor: state.isFocused ? '#00D4FF' : '#555',
+    boxShadow: 'none',
+    cursor: 'text',
+    '&:hover': { borderColor: state.isFocused ? '#00D4FF' : '#888' },
+  }),
+  valueContainer: (base) => ({ ...base, padding: '0 6px' }),
+  input: (base) => ({ ...base, margin: 0, padding: 0, color: '#fff', fontSize: 12 }),
+  placeholder: (base) => ({ ...base, color: '#888', fontSize: 12 }),
+  singleValue: (base) => ({ ...base, color: '#ddd', fontSize: 12 }),
+  indicatorSeparator: () => ({ display: 'none' }),
+  dropdownIndicator: (base) => ({ ...base, padding: 4, color: '#666' }),
+  clearIndicator: (base) => ({ ...base, padding: 4, color: '#666' }),
+  menu: (base) => ({
+    ...base,
+    background: '#1a1a1a',
+    border: '1px solid #444',
+    zIndex: 2000,
+    fontSize: 12,
+  }),
+  menuList: (base) => ({ ...base, maxHeight: 260 }),
+  groupHeading: (base) => ({
+    ...base,
+    color: '#00D4FF',
+    fontFamily: 'monospace',
+    fontSize: 10,
+    letterSpacing: '0.05em',
+    textTransform: 'none',
+  }),
+  option: (base, state) => ({
+    ...base,
+    background: state.isFocused ? 'rgba(0, 212, 255, 0.15)' : 'transparent',
+    color: state.isSelected ? '#00D4FF' : '#ddd',
+    cursor: 'pointer',
+    padding: '5px 10px',
+  }),
+  noOptionsMessage: (base) => ({ ...base, color: '#888', fontSize: 12 }),
+}
+
 function WaypointDropdown({ cities, companies, value, onChange, placeholder }) {
-  const val = value ? JSON.stringify({ x: value.x, z: value.z, name: value.name }) : ''
-
   const getCityName = (c) => c.LocalizedNames?.en_gb || c.Name
-  const sortedCities = [...cities].sort((a, b) => getCityName(a).localeCompare(getCityName(b)))
 
-  const byCity = {}
-  companies.forEach(c => {
-    const key = c.city || '—'
-    if (!byCity[key]) byCity[key] = []
-    byCity[key].push(c)
-  })
-  const sortedCityKeys = Object.keys(byCity).sort((a, b) => a.localeCompare(b))
+  const options = useMemo(() => {
+    const cityOptions = [...cities]
+      .sort((a, b) => getCityName(a).localeCompare(getCityName(b)))
+      .map(c => ({ value: `city:${c.X}:${c.Y}`, label: getCityName(c), x: c.X, z: c.Y, name: getCityName(c) }))
 
-  // If current value doesn't match any city or company (e.g. right-click coordinate),
-  // add it as a standalone option so it remains visible in the dropdown
-  const isKnown = !value || sortedCities.some(c => c.X === value.x && c.Y === value.z) ||
+    const byCity = {}
+    companies.forEach(c => {
+      const key = c.city || '—'
+      if (!byCity[key]) byCity[key] = []
+      byCity[key].push(c)
+    })
+    const companyGroups = Object.keys(byCity).sort((a, b) => a.localeCompare(b)).map(cityKey => ({
+      label: cityKey,
+      options: byCity[cityKey]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map(c => ({ value: `company:${c.x}:${c.z}`, label: c.name, x: c.x, z: c.z, name: c.name })),
+    }))
+
+    return [{ label: '── Cities ──', options: cityOptions }, ...companyGroups]
+  }, [cities, companies])
+
+  const isKnown = !value || cities.some(c => c.X === value.x && c.Y === value.z) ||
                   companies.some(c => c.x === value.x && c.z === value.z)
 
+  const selectedOption = value
+    ? { value: `sel:${value.x}:${value.z}`, label: value.name || `${value.x}, ${value.z}`, x: value.x, z: value.z, name: value.name }
+    : null
+
+  const extraOptions = value && !isKnown
+    ? [{ label: placeholder, options: [selectedOption] }, ...options]
+    : options
+
   return (
-    <select
+    <Select
       className="rp-select"
-      value={val}
-      onChange={e => {
-        if (!e.target.value) { onChange(null); return }
-        onChange(JSON.parse(e.target.value))
-      }}
-    >
-      <option value="">{placeholder}</option>
-      {value && !isKnown && (
-        <option value={val}>{value.name || `${value.x}, ${value.z}`}</option>
-      )}
-      {sortedCities.length > 0 && (
-        <optgroup label="── Cities ──">
-          {sortedCities.map((c, i) => (
-            <option key={i} value={JSON.stringify({ x: c.X, z: c.Y, name: getCityName(c) })}>
-              {getCityName(c)}
-            </option>
-          ))}
-        </optgroup>
-      )}
-      {sortedCityKeys.map(cityKey => (
-        <optgroup key={cityKey} label={cityKey}>
-          {byCity[cityKey]
-            .sort((a, b) => a.name.localeCompare(b.name))
-            .map((c, i) => (
-              <option key={i} value={JSON.stringify({ x: c.x, z: c.z, name: c.name })}>
-                {c.name}
-              </option>
-            ))}
-        </optgroup>
-      ))}
-    </select>
+      classNamePrefix="rp-select"
+      styles={selectStyles}
+      options={extraOptions}
+      value={selectedOption}
+      onChange={(opt) => onChange(opt ? { x: opt.x, z: opt.z, name: opt.name } : null)}
+      placeholder={placeholder}
+      isClearable
+      isSearchable
+      noOptionsMessage={() => 'No matches'}
+    />
   )
 }
 

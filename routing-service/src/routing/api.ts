@@ -325,15 +325,28 @@ router.get('/route', async (req: Request, res: Response) => {
   }
 
   // ETS2/ATS display distances: game coordinate units × scale factor = virtual GPS km.
-  // Land scale (~15.6 for ETS2): average across highways + compressed city areas.
-  // Ferry scale (~19 for ETS2): ports sit on open coastline at full highway compression,
-  //   so the full 1:19 factor applies rather than the city-blended average.
-  const LAND_SCALE:  Record<string, number> = { ets2: 15.6, ats: 18.0 };
-  const FERRY_SCALE: Record<string, number> = { ets2: 19.0, ats: 20.0 };
-  const landScale  = LAND_SCALE[game]  ?? 15.6;
+  // NOTE (2026-07-08): empirically calibrated from a CONFIRMED-identical route
+  // (Dortmund→Berlin, flat/highway, ETS2): raw=28984m, in-game=460km → scale≈15.87.
+  // An earlier "uniform 1:19" assumption was tested against an UNCONFIRMED route
+  // (Kassel) that implied ~22.95 — discarded as unreliable (route likely diverged
+  // from the in-game path, or included under-sampled curvy/mountain geometry).
+  // Land scale stays LOWER than the ferry scale because city/urban sections are
+  // far less compressed than highways; ferry scale is still unverified (no
+  // confirmed-route ferry sample yet) and kept at the prior working estimate.
+  // TODO: gather more confirmed same-route samples (mountain, urban-heavy,
+  // ferry) before trusting a single scale further.
+  const LAND_SCALE:  Record<string, number> = { ets2: 15.87, ats: 18.0 };
+  const FERRY_SCALE: Record<string, number> = { ets2: 19.0,  ats: 20.0 };
+  const landScale  = LAND_SCALE[game]  ?? 15.87;
   const ferryScale = FERRY_SCALE[game] ?? 19.0;
   const landLengthKm  = Math.round(result.landLength  * landScale  / 1000);
-  const ferryLengthKm = Math.round(result.ferryLength * ferryScale / 1000);
+  // Ferries: prefer the OFFICIAL distance from the game's own ferry connection
+  // defs (same figure shown in the in-game ferry booking dialog) — no scale
+  // guessing needed. Only fall back to the estimated scale for ferry edges that
+  // don't carry official data (e.g. unresolved/edge-case connections).
+  const ferryLengthKm = Math.round(
+    result.officialFerryDistanceKm + (result.unofficialFerryLength * ferryScale / 1000)
+  );
   const totalLengthKm = landLengthKm + ferryLengthKm;
 
   const edgeKeys: string[] = [];

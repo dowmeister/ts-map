@@ -234,6 +234,8 @@ function reconstructPath(
   let totalLength = 0;
   let landLength = 0;
   let ferryLength = 0;
+  let officialFerryDistanceKm = 0;
+  let unofficialFerryLength = 0;
   let curr = goalUid;
 
   while (curr !== startUid) {
@@ -242,13 +244,18 @@ function reconstructPath(
     if (edge) {
       totalWeight += edge.weight;
       totalLength += edge.length;
-      if (edge.itemType === 'ferry') ferryLength += edge.length;
-      else                           landLength  += edge.length;
+      if (edge.itemType === 'ferry') {
+        ferryLength += edge.length;
+        if ((edge.ferryDistanceKm ?? 0) > 0) officialFerryDistanceKm += edge.ferryDistanceKm!;
+        else                                 unofficialFerryLength  += edge.length;
+      } else {
+        landLength += edge.length;
+      }
     }
     curr = cameFrom.get(curr)!;
   }
   path.push(startUid);
   path.reverse();
 
-  return { path, totalWeight, totalLength, landLength, ferryLength };
+  return { path, totalWeight, totalLength, landLength, ferryLength, officialFerryDistanceKm, unofficialFerryLength };
 }

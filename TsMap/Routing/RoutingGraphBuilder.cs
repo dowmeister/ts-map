@@ -657,8 +657,13 @@ namespace TsMap.Routing
                     // so the route display follows the ferry line exactly as drawn on the map.
                     var fwdWp = BuildFerryWaypoints(conn);
                     var bwdWp = System.Linq.Enumerable.Reverse(fwdWp).ToArray();
-                    _graph.Edges.Add(new GraphEdge(startUid, endUid, FerryWeight, dist, "ferry", "ferry", fwdWp));
-                    _graph.Edges.Add(new GraphEdge(endUid, startUid, FerryWeight, dist, "ferry", "ferry", bwdWp));
+                    // Official distance/time/price come from the game's own ferry connection
+                    // defs (TsFerryConnection) — same figures shown to the player in the ferry
+                    // booking dialog, so use them for display distance instead of a guessed scale.
+                    _graph.Edges.Add(new GraphEdge(startUid, endUid, FerryWeight, dist, "ferry", "ferry", fwdWp,
+                        conn.TimeMinutes, conn.DistanceKm, conn.Price));
+                    _graph.Edges.Add(new GraphEdge(endUid, startUid, FerryWeight, dist, "ferry", "ferry", bwdWp,
+                        conn.TimeMinutes, conn.DistanceKm, conn.Price));
                 }
             }
         }

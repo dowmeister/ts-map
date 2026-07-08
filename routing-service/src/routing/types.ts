@@ -34,7 +34,11 @@ export interface RouteResult {
   totalWeight: number;
   totalLength: number;
   landLength: number;    // road + prefab + approach edges
-  ferryLength: number;   // ferry edges only
+  ferryLength: number;   // ferry edges only, raw game units (fallback when no official data)
+  /** Sum of official ferryDistanceKm across ferry edges that have game-provided data. */
+  officialFerryDistanceKm: number;
+  /** Raw length (game units) of ferry edges that do NOT have official game data, still needing the scale-based estimate. */
+  unofficialFerryLength: number;
 }
 
 export interface MapProjection {
