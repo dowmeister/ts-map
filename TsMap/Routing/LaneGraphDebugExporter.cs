@@ -1642,6 +1642,38 @@ namespace TsMap.Routing
                         node.Kind = "prefab_extra_soft";
                         node.SnapStatus = "extra";
                         node.SnapDetail = "extra prefab lane in partially matched group; " + node.SnapDetail;
+
+                        // The port group has a genuine lane-count mismatch (e.g. a
+                        // 2-lane prefab exit meeting a 1-lane road), so this endpoint
+                        // never got a snap match. Left as-is, it becomes a dead end
+                        // (or unreachable source) inside the prefab, silently severing
+                        // the only physical way through it even though the roads on
+                        // both sides are fine (seen at border-checkpoint crossings).
+                        // As a fallback, bridge it to the nearest already-matched
+                        // road endpoint in the same group so the crossing stays
+                        // routable, at the cost of a soft/adjusted-quality link.
+                        if (roadGroups.TryGetValue(groupKey, out var roadCandidates))
+                        {
+                            var fallback = FindNearestValidEndpoint(endpoint, roadCandidates, maxSnapDistance, minDot);
+                            if (fallback != null)
+                            {
+                                string from = fallback.AtStart ? endpoint.Id : fallback.Id;
+                                string to = fallback.AtStart ? fallback.Id : endpoint.Id;
+                                _edges.Add(new LaneDebugEdge
+                                {
+                                    From = from,
+                                    To = to,
+                                    Kind = "snap_adjusted",
+                                    SourceUid = fallback.Edge.SourceUid,
+                                    Lane = fallback.Edge.Lane + " -> " + endpoint.Edge.Lane + " (soft, count mismatch fallback)",
+                                    SpeedClass = fallback.Edge.SpeedClass ?? "local_road",
+                                    IsSecret = fallback.Edge.IsSecret || endpoint.Edge.IsSecret,
+                                    Path = new[] { new[] { fallback.X, fallback.Z }, new[] { endpoint.X, endpoint.Z } },
+                                });
+                                node.SnapStatus = "adjusted";
+                                node.SnapDetail = "count-mismatch fallback link to " + fallback.Id + "; " + node.SnapDetail;
+                            }
+                        }
                     }
                     else
                     {
@@ -1651,6 +1683,31 @@ namespace TsMap.Routing
                 }
             }
             return (road, prefab);
+        }
+
+        private static LaneEndpoint FindNearestValidEndpoint(
+            LaneEndpoint endpoint,
+            List<LaneEndpoint> candidates,
+            float maxSnapDistance,
+            float minDot)
+        {
+            LaneEndpoint nearest = null;
+            float nearestDist = float.MaxValue;
+            foreach (var candidate in candidates)
+            {
+                float dx = candidate.X - endpoint.X;
+                float dz = candidate.Z - endpoint.Z;
+                float dist = (float)Math.Sqrt(dx * dx + dz * dz);
+                if (dist > maxSnapDistance) continue;
+                float dot = endpoint.DirX * candidate.DirX + endpoint.DirZ * candidate.DirZ;
+                if (dot < minDot) continue;
+                if (dist < nearestDist)
+                {
+                    nearest = candidate;
+                    nearestDist = dist;
+                }
+            }
+            return nearest;
         }
 
         private static string DescribeUnmatchedEndpoint(

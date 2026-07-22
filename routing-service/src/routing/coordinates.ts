@@ -1,4 +1,4 @@
-import type { GraphNode, MapBounds } from './types';
+import type { GraphEdge, GraphNode, MapBounds } from './types';
 import type { RouteResult } from './types';
 
 const EARTH_RADIUS_METERS = 6370997.0;
@@ -82,6 +82,74 @@ export function ets2ToWgs84(
   bounds: MapBounds,
 ): [number, number] {
   return gameToMapCoords(gameX, gameZ, toTileMapInfo(bounds));
+}
+
+// Great-circle distance (km) between two [lon, lat] points. Uses the same
+// Earth radius as the game's own climate.sii projection for consistency.
+function haversineKm(a: [number, number], b: [number, number]): number {
+  const [lon1, lat1] = a;
+  const [lon2, lat2] = b;
+  const phi1 = lat1 * Math.PI / 180;
+  const phi2 = lat2 * Math.PI / 180;
+  const dPhi = (lat2 - lat1) * Math.PI / 180;
+  const dLambda = (lon2 - lon1) * Math.PI / 180;
+  const s = Math.sin(dPhi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dLambda / 2) ** 2;
+  return 2 * (EARTH_RADIUS_METERS / 1000) * Math.asin(Math.sqrt(Math.min(1, s)));
+}
+
+function edgeBetween(
+  adjacency: Record<string, GraphEdge[]>,
+  from: string,
+  to: string,
+): GraphEdge | undefined {
+  const list = adjacency[from];
+  if (!list) return undefined;
+  let best: GraphEdge | undefined;
+  for (const edge of list) {
+    if (edge.to !== to) continue;
+    if (!best || edge.weight < best.weight) best = edge;
+  }
+  return best;
+}
+
+/**
+ * Real-world LAND distance (km) for the route, computed by converting the
+ * dense polyline to WGS84 via the game's own climate.sii Lambert Conformal
+ * Conic projection (same one used for rendering, see gameToMapCoords) and
+ * summing great-circle distances between consecutive points. No empirical
+ * flat scale factor involved. Ferry edges are excluded — their distance uses
+ * the game's own official ferry connection data instead (see
+ * RouteResult.officialFerryDistanceKm), since a ferry crossing doesn't follow
+ * a geodesic/road-like path.
+ */
+export function computeLandDistanceKm(
+  result: RouteResult,
+  nodes: Record<string, GraphNode>,
+  adjacency: Record<string, GraphEdge[]>,
+  bounds: MapBounds,
+  edgePaths?: Record<string, [number, number][]>,
+): number {
+  let totalKm = 0;
+  for (let i = 0; i < result.path.length - 1; i++) {
+    const fromUid = result.path[i];
+    const toUid = result.path[i + 1];
+    const edge = edgeBetween(adjacency, fromUid, toUid);
+    if (edge?.itemType === 'ferry') continue;
+
+    const fromNode = nodes[fromUid];
+    const toNode = nodes[toUid];
+    if (!fromNode || !toNode) continue;
+
+    const wp = edgePaths?.[`${fromUid}-${toUid}`];
+    const rawPts: [number, number][] =
+      wp && wp.length >= 2 ? wp : [[fromNode.x, fromNode.z], [toNode.x, toNode.z]];
+
+    const wgsPts = rawPts.map(([x, z]) => ets2ToWgs84(x, z, bounds));
+    for (let j = 1; j < wgsPts.length; j++) {
+      totalKm += haversineKm(wgsPts[j - 1], wgsPts[j]);
+    }
+  }
+  return totalKm;
 }
 
 function legacyGameToMapCoords(

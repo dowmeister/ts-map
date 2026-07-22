@@ -154,7 +154,12 @@ export function useRoute(mapInstance, tileMapInfo) {
 
       for (let i = 0; i < waypoints.length - 1; i++) {
         const a = waypoints[i], b = waypoints[i + 1]
-        const url = `${ROUTING_BASE}/api/route?${baseParams}${avoidParam}&fromX=${a.x}&fromZ=${a.z}&toX=${b.x}&toZ=${b.z}`
+        // A via waypoint is an intermediate stop shared between two legs (not the
+        // route's true start/end) — snap it to a real through-road node so the
+        // route passes through it instead of detouring into a spur.
+        const fromIsVia = i > 0
+        const toIsVia = i < waypoints.length - 2
+        const url = `${ROUTING_BASE}/api/route?${baseParams}${avoidParam}&fromX=${a.x}&fromZ=${a.z}&toX=${b.x}&toZ=${b.z}&fromIsVia=${fromIsVia}&toIsVia=${toIsVia}`
         const res = await fetch(url)
         if (!res.ok) {
           const body = await res.json().catch(() => ({}))

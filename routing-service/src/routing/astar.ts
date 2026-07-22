@@ -167,6 +167,7 @@ export function findRoute(
       const baseCost = (options?.mode === 'shortest') ? shortestBaseCost(edge) : edge.weight;
       let weightMult = (options?.avoidHighways && edge.speedClass === 'freeway') ? 100 : 1;
       let extraCost = 0;
+
       if (edge.itemType === 'ferry') {
         if (hasOfficialFerryCost(edge)) {
           extraCost += FERRY_BOARDING_PENALTY_METERS;

@@ -1,7 +1,7 @@
 // Grid-based spatial index: zero external dependencies, O(1) cell lookup, O(k) candidates.
 // For 194,187 nodes over ETS2's ~91k×98k world, cellSize ≈ 2625 gives ~150
 // nodes/cell — the target specified in Phase 4.
-import type { GraphNode, MapBounds } from './types';
+import type { GraphEdge, GraphNode, MapBounds } from './types';
 
 interface CellItem {
   uid: string;

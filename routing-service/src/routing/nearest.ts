@@ -44,6 +44,48 @@ export function findNearestMainComponent(
   return bestUid;
 }
 
+// True road-network node: has at least one 'road' or 'prefab' edge (i.e. is
+// part of the actual drivable through-network, not merely a company/ferry
+// driveway endpoint). Used to snap VIA waypoints so the route passes THROUGH
+// the point instead of detouring into a spur and backtracking.
+function isThroughRoadNode(uid: string, adjacency: Record<string, GraphEdge[]>): boolean {
+  const edges = adjacency[uid];
+  if (!edges) return false;
+  return edges.some(e => e.itemType === 'road' || e.itemType === 'prefab');
+}
+
+// Like findNearestMainComponent, but restricted to through-road nodes so a
+// VIA waypoint doesn't snap to a company/ferry approach spur (which would
+// force the route to detour in and back out instead of passing through).
+// Falls back to the unrestricted result if no through-road node is found
+// within the search radius.
+export function findNearestThroughRoad(
+  x: number,
+  z: number,
+  spatialIndex: SpatialIndex,
+  adjacency: Record<string, GraphEdge[]>,
+  isInMain: (uid: string) => boolean,
+  isRoutable: (uid: string) => boolean = () => true,
+): string | undefined {
+  const isThrough = (uid: string) => isRoutable(uid) && isInMain(uid) && isThroughRoadNode(uid, adjacency);
+
+  for (let radius = 1; radius <= 8; radius++) {
+    const candidates = spatialIndex.findCandidates(x, z, radius).filter(c => isThrough(c.uid));
+    if (candidates.length === 0) continue;
+
+    let bestUid: string | undefined;
+    let bestDSq = Infinity;
+    for (const c of candidates) {
+      const dx = c.x - x, dz = c.z - z;
+      const dSq = dx * dx + dz * dz;
+      if (dSq < bestDSq) { bestDSq = dSq; bestUid = c.uid; }
+    }
+    return bestUid;
+  }
+
+  return undefined;
+}
+
 export function findNearestReachableMainComponent(
   x: number,
   z: number,

@@ -100,7 +100,8 @@ namespace TsMap
                     ["east"] = bbox.east,
                     ["north"] = bbox.north
                 },
-                ["textures"] = textures
+                ["textures"] = textures,
+                ["version"] = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
             };
 
             File.WriteAllText(

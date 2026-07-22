@@ -7,9 +7,9 @@ import { graphDebugHandler, laneGraphDebugHandler, laneGraphIssuesHandler, loadS
 import { DirectedComponentIndex, MainComponentIndex } from './component';
 import { reconnectDirectionalTraps } from './reconnect';
 import { SpatialIndex } from './spatial-index';
-import { findNearestMainComponent, findNearestReachableMainComponent, findNearestWithHeading } from './nearest';
+import { findNearestMainComponent, findNearestReachableMainComponent, findNearestWithHeading, findNearestThroughRoad } from './nearest';
 import { findRoute } from './astar';
-import { ets2ToWgs84, wgs84ToGame, routeToGeoJson } from './coordinates';
+import { ets2ToWgs84, wgs84ToGame, routeToGeoJson, computeLandDistanceKm } from './coordinates';
 import { buildManeuvers } from './maneuvers';
 import type { GraphEdge, LoadedGraph } from './types';
 
@@ -209,13 +209,18 @@ router.get('/graph/debug', graphDebugHandler);
 router.get('/lane-graph/debug', laneGraphDebugHandler);
 router.get('/lane-graph/issues', laneGraphIssuesHandler);
 
+// Radius (game units ≈ metres) around an avoid-point within which ALL nodes
+// (every lane / carriageway direction) are blocked, so the point acts like a
+// wall across the whole road segment instead of just one lane.
+const AVOID_RADIUS = 50;
+
 router.get('/route', async (req: Request, res: Response) => {
   const requestT0 = Date.now();
   const game = resolveGame(req);
   const rt = getRuntimeOrError(res, game);
   if (!rt) return;
 
-  const { fromX, fromZ, toX, toZ, fromHeading, avoidHighways, avoidFerries, mode, avoidPoints } = req.query;
+  const { fromX, fromZ, toX, toZ, fromHeading, avoidHighways, avoidFerries, mode, avoidPoints, fromIsVia, toIsVia } = req.query;
   if (!fromX || !fromZ || !toX || !toZ) {
     res.status(400).json({ error: 'Required: fromX, fromZ, toX, toZ' });
     return;
@@ -263,9 +268,15 @@ router.get('/route', async (req: Request, res: Response) => {
   const headingSnap = fromHeading
     ? findNearestWithHeading(fx, fz, heading, spatialIndex, loadedGraph.nodes, loadedGraph.adjacency, loadedGraph.bounds)
     : undefined;
-  const startUid = headingSnap && isInMain(headingSnap) && canDepartAndEscape(headingSnap)
-    ? headingSnap
-    : findNearestMainComponent(fx, fz, spatialIndex, isInMain, canDepartAndEscape);
+  // VIA waypoints (an intermediate stop, not the true route start) must snap to
+  // a real through-road node — otherwise the route detours into a company/ferry
+  // approach spur and immediately backtracks instead of passing through.
+  const startUid = fromIsVia === 'true'
+    ? findNearestThroughRoad(fx, fz, spatialIndex, loadedGraph.adjacency, isInMain, canDepartAndEscape)
+      ?? findNearestMainComponent(fx, fz, spatialIndex, isInMain, canDepartAndEscape)
+    : headingSnap && isInMain(headingSnap) && canDepartAndEscape(headingSnap)
+      ? headingSnap
+      : findNearestMainComponent(fx, fz, spatialIndex, isInMain, canDepartAndEscape);
   const snapMs = Date.now() - snapT0;
 
   if (!startUid) {
@@ -276,16 +287,25 @@ router.get('/route', async (req: Request, res: Response) => {
 
   const goalSnapT0 = Date.now();
   const startComponent = directedComponentIndex.componentOf(startUid);
+  // VIA waypoints likewise must snap to a through-road node on the goal side.
   const goalUid = startComponent == null
     ? undefined
-    : findNearestReachableMainComponent(
-        tx,
-        tz,
-        spatialIndex,
-        isInMain,
-        canArrive,
-        uid => directedComponentIndex.canReachComponent(startComponent, uid),
-      );
+    : toIsVia === 'true'
+      ? findNearestThroughRoad(
+          tx, tz, spatialIndex, loadedGraph.adjacency, isInMain,
+          uid => canArrive(uid) && directedComponentIndex.canReachComponent(startComponent, uid),
+        ) ?? findNearestReachableMainComponent(
+          tx, tz, spatialIndex, isInMain, canArrive,
+          uid => directedComponentIndex.canReachComponent(startComponent, uid),
+        )
+      : findNearestReachableMainComponent(
+          tx,
+          tz,
+          spatialIndex,
+          isInMain,
+          canArrive,
+          uid => directedComponentIndex.canReachComponent(startComponent, uid),
+        );
   const goalSnapMs = Date.now() - goalSnapT0;
   if (!goalUid) {
     logRoute(`[Route:${game}] rejected: destination not connected start=${startUid} snapMs=${snapMs} goalSnapMs=${goalSnapMs}`);
@@ -298,9 +318,19 @@ router.get('/route', async (req: Request, res: Response) => {
   if (avoidPoints) {
     try {
       const pts: { x: number; z: number }[] = JSON.parse(avoidPoints as string);
-      blockedNodes = new Set(
-        pts.map(p => findNearestMainComponent(p.x, p.z, spatialIndex, isInMain)).filter((u): u is string => !!u)
-      );
+      // Block ALL nodes within a radius of each avoid point (every lane, both
+      // carriageway directions, service/parallel-lane nodes) — blocking only
+      // the single nearest node lets the router just shift to a parallel lane
+      // node and pass straight through, instead of treating the point like a
+      // wall across the whole road segment.
+      blockedNodes = new Set<string>();
+      for (const p of pts) {
+        const rSq = AVOID_RADIUS * AVOID_RADIUS;
+        for (const c of spatialIndex.findInBbox(p.x - AVOID_RADIUS, p.x + AVOID_RADIUS, p.z - AVOID_RADIUS, p.z + AVOID_RADIUS)) {
+          const dx = c.x - p.x, dz = c.z - p.z;
+          if (dx * dx + dz * dz <= rSq) blockedNodes.add(c.uid);
+        }
+      }
       logRoute(`[Route:${game}] avoidPoints=${pts.length} blockedNodes=${blockedNodes.size}`);
     } catch (err) {
       logRoute(`[Route:${game}] malformed avoidPoints ignored: ${err instanceof Error ? err.message : String(err)}`);
@@ -324,36 +354,36 @@ router.get('/route', async (req: Request, res: Response) => {
     return;
   }
 
-  // ETS2/ATS display distances: game coordinate units × scale factor = virtual GPS km.
-  // NOTE (2026-07-08): empirically calibrated from a CONFIRMED-identical route
-  // (Dortmund→Berlin, flat/highway, ETS2): raw=28984m, in-game=460km → scale≈15.87.
-  // An earlier "uniform 1:19" assumption was tested against an UNCONFIRMED route
-  // (Kassel) that implied ~22.95 — discarded as unreliable (route likely diverged
-  // from the in-game path, or included under-sampled curvy/mountain geometry).
-  // Land scale stays LOWER than the ferry scale because city/urban sections are
-  // far less compressed than highways; ferry scale is still unverified (no
-  // confirmed-route ferry sample yet) and kept at the prior working estimate.
-  // TODO: gather more confirmed same-route samples (mountain, urban-heavy,
-  // ferry) before trusting a single scale further.
-  const LAND_SCALE:  Record<string, number> = { ets2: 15.87, ats: 18.0 };
-  const FERRY_SCALE: Record<string, number> = { ets2: 19.0,  ats: 20.0 };
-  const landScale  = LAND_SCALE[game]  ?? 15.87;
+  // ETS2/ATS display distances.
+  // LAND: computed directly from real-world geometry — convert the dense route
+  // polyline to WGS84 via the game's own climate.sii Lambert Conformal Conic
+  // projection (already used for map rendering, see coordinates.ts) and sum
+  // great-circle distances. No empirical scale factor needed or guessed.
+  // FERRY: prefer the OFFICIAL distance from the game's own ferry connection
+  // defs (same figure shown in the in-game ferry booking dialog); only fall
+  // back to a rough estimated scale for ferry edges without official data
+  // (e.g. unresolved/edge-case connections).
+  const FERRY_SCALE: Record<string, number> = { ets2: 19.0, ats: 20.0 };
   const ferryScale = FERRY_SCALE[game] ?? 19.0;
-  const landLengthKm  = Math.round(result.landLength  * landScale  / 1000);
-  // Ferries: prefer the OFFICIAL distance from the game's own ferry connection
-  // defs (same figure shown in the in-game ferry booking dialog) — no scale
-  // guessing needed. Only fall back to the estimated scale for ferry edges that
-  // don't carry official data (e.g. unresolved/edge-case connections).
-  const ferryLengthKm = Math.round(
-    result.officialFerryDistanceKm + (result.unofficialFerryLength * ferryScale / 1000)
-  );
-  const totalLengthKm = landLengthKm + ferryLengthKm;
 
   const edgeKeys: string[] = [];
   for (let i = 0; i < result.path.length - 1; i++) {
     edgeKeys.push(`${result.path[i]}-${result.path[i + 1]}`);
   }
   const edgePaths = await loadSelectedEdgePaths(game, edgeKeys);
+
+  const landLengthKm  = Math.round(
+    computeLandDistanceKm(result, loadedGraph.nodes, loadedGraph.adjacency, loadedGraph.bounds, edgePaths)
+  );
+  const ferryLengthKm = Math.round(
+    result.officialFerryDistanceKm + (result.unofficialFerryLength * ferryScale / 1000)
+  );
+  const totalLengthKm = landLengthKm + ferryLengthKm;
+  // Effective scale derived from the real geodesic land distance, used only to
+  // keep maneuver distance markers (which walk the raw-unit polyline) consistent
+  // with the more accurate total above.
+  const effectiveLandScale = result.landLength > 0 ? (landLengthKm * 1000) / result.landLength : 1;
+
   const geoT0 = Date.now();
   const geoJson = routeToGeoJson(result, loadedGraph.nodes, loadedGraph.bounds, edgePaths);
   const geoMs = Date.now() - geoT0;
@@ -363,7 +393,7 @@ router.get('/route', async (req: Request, res: Response) => {
     loadedGraph.adjacency,
     loadedGraph.bounds,
     edgePaths,
-    landScale,
+    effectiveLandScale,
   );
   logRoute(`[Route:${game}] ok start=${startUid} goal=${goalUid} nodes=${result.path.length} length=${Math.round(result.totalLength)}m km=${totalLengthKm} routeMs=${routeMs} geoMs=${geoMs} totalMs=${Date.now() - requestT0}`);
   res.json({
