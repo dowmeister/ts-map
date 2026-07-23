@@ -291,6 +291,45 @@ namespace TsMap
             };
         }
 
+        /// <summary>
+        /// Projects the edges of a game-space bounding box through the given projection to
+        /// find the enclosing WGS84 lon/lat bbox. Samples along all four edges (not just the
+        /// corners) since non-linear projections (e.g. Lambert Conformal Conic) can have their
+        /// extrema away from the corners for large/wide bounds (e.g. ATS's US-wide map).
+        /// </summary>
+        public static (double west, double south, double east, double north) ComputeWgs84Bbox(
+            MapProjectionBounds gameBounds,
+            ClimateProjectionInfo projection)
+        {
+            var west = double.PositiveInfinity;
+            var south = double.PositiveInfinity;
+            var east = double.NegativeInfinity;
+            var north = double.NegativeInfinity;
+
+            const int samplesPerEdge = 64;
+            for (var i = 0; i <= samplesPerEdge; i++)
+            {
+                var t = i / (double)samplesPerEdge;
+                var x = (float)(gameBounds.MinX + (gameBounds.MaxX - gameBounds.MinX) * t);
+                var z = (float)(gameBounds.MinZ + (gameBounds.MaxZ - gameBounds.MinZ) * t);
+
+                Include(GameToLatLng(x, gameBounds.MinZ, projection));
+                Include(GameToLatLng(x, gameBounds.MaxZ, projection));
+                Include(GameToLatLng(gameBounds.MinX, z, projection));
+                Include(GameToLatLng(gameBounds.MaxX, z, projection));
+            }
+
+            return (west, south, east, north);
+
+            void Include((double lon, double lat) p)
+            {
+                west = Math.Min(west, p.lon);
+                south = Math.Min(south, p.lat);
+                east = Math.Max(east, p.lon);
+                north = Math.Max(north, p.lat);
+            }
+        }
+
         private static (float x, float z) ParseVec2(string value)
         {
             var s = value.Trim().TrimStart('(').TrimEnd(')');

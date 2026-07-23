@@ -122,6 +122,7 @@ function App() {
       />
       <MapViewer
         game={currentGame}
+        tileMapInfo={tileMapInfo}
         initialPosition={initialPosition}
         onMapLoad={setMapInstance}
         onZoomChange={setZoom}

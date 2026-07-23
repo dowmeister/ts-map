@@ -42,7 +42,7 @@ namespace TsMap
                 ? mapData.MapSize.x / mapData.MapSize.z
                 : textureAspectRatio;
             var textureBounds = MapProjection.GetUiMapTextureBounds();
-            var bbox = ComputeWgs84Bbox(textureBounds, projection);
+            var bbox = MapProjection.ComputeWgs84Bbox(textureBounds, projection);
 
             var mapWidth = textureBounds.Width;
             var mapHeight = textureBounds.Height;
@@ -263,37 +263,5 @@ namespace TsMap
             }
         }
 
-        private (double west, double south, double east, double north) ComputeWgs84Bbox(
-            MapProjectionBounds gameBounds,
-            ClimateProjectionInfo projection)
-        {
-            var west = double.PositiveInfinity;
-            var south = double.PositiveInfinity;
-            var east = double.NegativeInfinity;
-            var north = double.NegativeInfinity;
-
-            const int samplesPerEdge = 64;
-            for (var i = 0; i <= samplesPerEdge; i++)
-            {
-                var t = i / (double)samplesPerEdge;
-                var x = (float)(gameBounds.MinX + (gameBounds.MaxX - gameBounds.MinX) * t);
-                var z = (float)(gameBounds.MinZ + (gameBounds.MaxZ - gameBounds.MinZ) * t);
-
-                Include(MapProjection.GameToLatLng(x, gameBounds.MinZ, projection));
-                Include(MapProjection.GameToLatLng(x, gameBounds.MaxZ, projection));
-                Include(MapProjection.GameToLatLng(gameBounds.MinX, z, projection));
-                Include(MapProjection.GameToLatLng(gameBounds.MaxX, z, projection));
-            }
-
-            return (west, south, east, north);
-
-            void Include((double lon, double lat) p)
-            {
-                west = Math.Min(west, p.lon);
-                south = Math.Min(south, p.lat);
-                east = Math.Max(east, p.lon);
-                north = Math.Max(north, p.lat);
-            }
-        }
     }
 }

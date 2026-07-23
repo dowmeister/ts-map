@@ -212,8 +212,16 @@ export const OVERLAY_LAYER_GROUPS = [
   { id: "hidden-roads", label: "Hidden Roads" },
 ];
 
-function buildBackground(baseUrl, game, mapInfo) {
-  if (!mapInfo?.texture_bbox_wgs84) {
+// Games with a pre-generated raster background pmtiles file. This is opt-in
+// via env var since the background export pipeline is experimental and not
+// part of the standard CLI export (see README-VectorTiles.md step 4).
+const BACKGROUND_GAMES = (import.meta.env.VITE_MAP_BACKGROUND_GAMES || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+function buildBackground(baseUrl, game, versionQuery) {
+  if (!BACKGROUND_GAMES.includes(game)) {
     return { sources: {}, layers: [] };
   }
 
@@ -221,7 +229,7 @@ function buildBackground(baseUrl, game, mapInfo) {
     sources: {
       "game-background": {
         type: "raster",
-        url: `pmtiles://${baseUrl}/pmtiles/${game}-background.pmtiles`,
+        url: `pmtiles://${baseUrl}/pmtiles/${game}-background.pmtiles${versionQuery}`,
         tileSize: 256,
       },
     },
@@ -237,14 +245,14 @@ function buildBackground(baseUrl, game, mapInfo) {
   };
 }
 
-export function createMapStyle(game, mapInfo = null) {
+export function createMapStyle(game, tileMapInfo = null) {
   const rawBase = import.meta.env.VITE_MAP_DATA_URL || "http://localhost:8888";
   const baseUrl = rawBase.startsWith("http")
     ? rawBase
     : `${window.location.origin}${rawBase}`;
-  const assetVersion = import.meta.env.VITE_MAP_ASSET_VERSION;
+  const assetVersion = tileMapInfo?.version || import.meta.env.VITE_MAP_ASSET_VERSION;
   const spriteQuery = assetVersion ? `?v=${encodeURIComponent(assetVersion)}` : "";
-  const background = buildBackground(baseUrl, game, mapInfo);
+  const background = buildBackground(baseUrl, game, spriteQuery);
 
   console.log('Using map style with base URL:', baseUrl);
   return {
@@ -271,11 +279,11 @@ export function createMapStyle(game, mapInfo = null) {
     sources: {
       map: {
         type: "vector",
-        url: `pmtiles://${baseUrl}/pmtiles/${game}.pmtiles`,
+        url: `pmtiles://${baseUrl}/pmtiles/${game}.pmtiles${spriteQuery}`,
       },
       "footprints-source": {
         type: "vector",
-        url: `pmtiles://${baseUrl}/pmtiles/${game}-footprints.pmtiles`,
+        url: `pmtiles://${baseUrl}/pmtiles/${game}-footprints.pmtiles${spriteQuery}`,
       },
       trucks: {
         type: "geojson",

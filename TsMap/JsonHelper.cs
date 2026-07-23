@@ -30,6 +30,13 @@ namespace TsMap
         public static void SaveVectorTileMapInfo(string path, float minX, float maxX, float minZ, float maxZ)
         {
             var projection = MapProjection.ReadClimateProjectionSii();
+            // NOTE: minX/maxX/minZ/maxZ here are the "world map" camera-limit bounds
+            // (huge/unreliable for some games, e.g. ATS's ui_map_camera_min/max span
+            // ~1.6M units vs. the actual ~150K-unit map) — NOT safe input for the LCC
+            // projection. Use the same texture/network bounds MapBackgroundExporter
+            // already relies on (proven correct for every game) to compute the bbox.
+            var textureBounds = MapProjection.GetUiMapTextureBounds();
+            var bbox = MapProjection.ComputeWgs84Bbox(textureBounds, projection);
             var vectorTileMapInfo = new JObject
             {
                 ["x1"] = minX,
@@ -39,6 +46,19 @@ namespace TsMap
                 ["minZoom"] = 4,
                 ["maxZoom"] = 13,
                 ["tileSize"] = 256,
+                // Bump on every export so the web-viewer/CDN can use it as a `?v=`
+                // cache-busting query param for sprites/tiles served from R2.
+                ["version"] = DateTime.UtcNow.ToString("yyyyMMddHHmmss"),
+                // Precomputed WGS84 bbox (edge-sampled through the projection below,
+                // not just the 4 corners) — used by the web-viewer for the default
+                // view/bounds check, so it doesn't need to reimplement the LCC math.
+                ["bounds_wgs84"] = new JObject
+                {
+                    ["west"] = bbox.west,
+                    ["south"] = bbox.south,
+                    ["east"] = bbox.east,
+                    ["north"] = bbox.north
+                },
                 ["projection"] = new JObject
                 {
                     ["type"] = projection.MapProjection,
