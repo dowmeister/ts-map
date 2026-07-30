@@ -627,6 +627,12 @@ namespace TsMap
         public void ExportCities(string path)
         {
             if (!Directory.Exists(path)) return;
+
+            var companyDefByInGameId = CompanyDefs
+                .Where(d => d.InGameId != null)
+                .GroupBy(d => d.InGameId.Split('.').Last())
+                .ToDictionary(g => g.Key, g => g.First());
+
             var citiesJArr = new JArray();
             foreach (var city in Cities)
             {
@@ -636,6 +642,21 @@ namespace TsMap
                 cityJObj["Y"] = city.Z;
                 cityJObj["InGameId"] = ScsToken.TokenToString(city.City.Token);
                 cityJObj["LocalizationToken"] = city.City.LocalizationToken;
+
+                var companiesJArr = new JArray();
+                foreach (var company in Companies)
+                {
+                    if (company.Hidden || company.City == null) continue;
+                    if (company.City.Token != city.City.Token) continue;
+
+                    companyDefByInGameId.TryGetValue(company.CompanyDefId, out var def);
+                    companiesJArr.Add(new JObject
+                    {
+                        ["id"] = company.CompanyDefId,
+                        ["name"] = def?.Name ?? company.CompanyDefId
+                    });
+                }
+                cityJObj["Companies"] = companiesJArr;
 
                 if (_countriesLookup.ContainsKey(ScsToken.StringToToken(city.City.Country)))
                 {

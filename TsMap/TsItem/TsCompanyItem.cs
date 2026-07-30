@@ -13,9 +13,12 @@ namespace TsMap.TsItem
     public class TsCompanyItem : TsItem
     {
         private ulong _companyNameToken;
+        private ulong _cityNameToken;
         private ulong _prefabUid;
 
         public string CompanyDefId => ScsToken.TokenToString(_companyNameToken);
+
+        public TsCity City => Sector.Mapper.LookupCity(_cityNameToken);
 
         public TsCompanyItem(TsSector sector, int startOffset) : base(sector, startOffset)
         {
@@ -40,7 +43,9 @@ namespace TsMap.TsItem
 
             _companyNameToken = MemoryHelper.ReadUInt64(Sector.Stream, fileOffset += 0x05); // 0x05(flags)
 
-            _prefabUid = MemoryHelper.ReadUInt64(Sector.Stream, fileOffset += 0x08 + 0x08); // 0x08(_companyNameToken) + 0x08(city_name)
+            _cityNameToken = MemoryHelper.ReadUInt64(Sector.Stream, fileOffset += 0x08); // 0x08(_companyNameToken)
+
+            _prefabUid = MemoryHelper.ReadUInt64(Sector.Stream, fileOffset += 0x08); // 0x08(city_name)
 
             Nodes = new List<ulong>(1)
             {
@@ -62,7 +67,9 @@ namespace TsMap.TsItem
 
             _companyNameToken = MemoryHelper.ReadUInt64(Sector.Stream, fileOffset += 0x05); // 0x05(flags)
 
-            _prefabUid = MemoryHelper.ReadUInt64(Sector.Stream, fileOffset += 0x08 + 0x08); // 0x08(_companyNameToken) + 0x08(city_name)
+            _cityNameToken = MemoryHelper.ReadUInt64(Sector.Stream, fileOffset += 0x08); // 0x08(_companyNameToken)
+
+            _prefabUid = MemoryHelper.ReadUInt64(Sector.Stream, fileOffset += 0x08); // 0x08(city_name)
 
             Nodes = new List<ulong>(1)
             {
@@ -86,7 +93,9 @@ namespace TsMap.TsItem
 
             _companyNameToken = MemoryHelper.ReadUInt64(Sector.Stream, fileOffset += 0x05); // 0x05(flags)
 
-            _prefabUid = MemoryHelper.ReadUInt64(Sector.Stream, fileOffset += 0x08 + 0x08); // 0x08(_companyNameToken) + 0x08(city_name)
+            _cityNameToken = MemoryHelper.ReadUInt64(Sector.Stream, fileOffset += 0x08); // 0x08(_companyNameToken)
+
+            _prefabUid = MemoryHelper.ReadUInt64(Sector.Stream, fileOffset += 0x08); // 0x08(city_name)
 
             Nodes = new List<ulong>(1)
             {
@@ -103,7 +112,9 @@ namespace TsMap.TsItem
             var fileOffset = startOffset + 0x34; // Set position at start of flags
             DlcGuard = MemoryHelper.ReadUint8(Sector.Stream, fileOffset + 0x01);
 
-            _prefabUid = MemoryHelper.ReadUInt64(Sector.Stream, fileOffset += 0x05 + 0x08); // 0x05(flags) + 0x08(linked_city_name)
+            _cityNameToken = MemoryHelper.ReadUInt64(Sector.Stream, fileOffset += 0x05); // 0x05(flags)
+
+            _prefabUid = MemoryHelper.ReadUInt64(Sector.Stream, fileOffset += 0x08); // 0x08(linked_city_name)
 
             _companyNameToken = MemoryHelper.ReadUInt64(Sector.Stream, fileOffset += 0x08); // 0x08(_prefabUid)
 
